@@ -15,12 +15,13 @@ class Arena {
         void          (*drop)(void*);
     };
 
-    MemoryAllocator   allocator       = {};
     MemoryReservation reservation     = {};
     ResourceNode*     resources_stack = {};
     u8*               cur             = {};
 
   public:
+    MemoryAllocator allocator = {};
+
     static Arena create(MemoryAllocator allocator, usize block_size);
     void         destroy();
 
@@ -44,5 +45,6 @@ class ScratchArenaHandle : public NoCopy {
 };
 
 void arena_scratch_thread_local_create(MemoryAllocator allocator, usize block_size);
+void arena_scratch_thread_local_destroy();
 
 }  // namespace

@@ -85,6 +85,11 @@ void arena_scratch_thread_local_create(MemoryAllocator allocator, usize block_si
     g_arena_scratch[1] = Arena::create(allocator, block_size);
 }
 
+void arena_scratch_thread_local_destroy() {
+    g_arena_scratch[0].destroy();
+    g_arena_scratch[1].destroy();
+}
+
 ScratchArenaHandle::ScratchArenaHandle() {
     arena = &g_arena_scratch[0];
     mark  = arena->mark();
