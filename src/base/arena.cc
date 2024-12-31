@@ -1,0 +1,117 @@
+#include "inc.hh"
+namespace {
+
+global thread_local Arena g_arena_scratch[2];
+
+Arena Arena::create(MemoryAllocator allocator, usize block_size) {
+    MemoryReservation reservation = allocator.memory_reserve(block_size);
+
+    Arena ret           = {};
+    ret.allocator       = allocator;
+    ret.reservation     = reservation;
+    ret.cur             = reservation.base;
+    ret.resources_stack = nullptr;
+    return ret;
+}
+
+void Arena::destroy() {
+    clear();
+    allocator.memory_release(&reservation);
+    ZeroStruct(this);
+}
+
+ArenaMark Arena::mark() {
+    return {
+        .ptr = cur
+    };
+}
+
+void Arena::restore(ArenaMark saved) {
+    while (resources_stack && resources_stack->target >= saved.ptr) {
+        resources_stack->drop(resources_stack->target);
+        SllStackPop(resources_stack);
+    }
+    cur = saved.ptr;
+    allocator.memory_commit_size(&reservation, cur - reservation.base);
+}
+
+void Arena::clear() {
+    while (resources_stack) {
+        resources_stack->drop(resources_stack->target);
+        SllStackPop(resources_stack);
+    }
+    cur = reservation.base;
+    allocator.memory_commit_size(&reservation, 0);
+}
+
+forall(T) T* Arena::alloc_one() {
+    usize size = sizeof(T);
+
+    cur     = (u8*)(((usize)cur + (ARENA_MIN_ALIGNMENT - 1)) & ~(ARENA_MIN_ALIGNMENT - 1));
+    u8* ret = cur;
+    allocator.memory_commit_size(&reservation, (cur - reservation.base) + size);
+    cur += size;
+
+    return (T*)memset(ret, 0, size);
+}
+
+forall(T) Slice<T> Arena::alloc_many(usize count) {
+    usize size = sizeof(T) * count;
+
+    cur     = (u8*)(((usize)cur + (ARENA_MIN_ALIGNMENT - 1)) & ~(ARENA_MIN_ALIGNMENT - 1));
+    u8* ret = cur;
+    allocator.memory_commit_size(&reservation, (cur - reservation.base) + size);
+    cur += size;
+
+    Slice<T> slice = {};
+    slice.count    = count;
+    slice.elems    = (T*)memset(ret, 0, size);
+    return slice;
+}
+
+forall(T) T* Arena::alloc_resource(void (*drop)(T*)) {
+    T*                   result = alloc_one<T>();
+    Arena::ResourceNode* node   = alloc_one<Arena::ResourceNode>();
+
+    node->target = result;
+    node->drop   = drop;
+    SllStackPush(resources_stack, node);
+
+    return result;
+}
+
+void arena_scratch_thread_local_create(MemoryAllocator allocator, usize block_size) {
+    g_arena_scratch[0] = Arena::create(allocator, block_size);
+    g_arena_scratch[1] = Arena::create(allocator, block_size);
+}
+
+ScratchArenaHandle::ScratchArenaHandle() {
+    arena = &g_arena_scratch[0];
+    mark  = arena->mark();
+}
+
+ScratchArenaHandle::ScratchArenaHandle(Slice<Arena*> conflicts) {
+    bool matched[2] = {};
+    for (u32 i = 0; i < conflicts.count; ++i) {
+        if (&g_arena_scratch[0] == conflicts.elems[i]) {
+            matched[0] = true;
+            if (matched[1]) goto err;
+        } else if (&g_arena_scratch[1] == conflicts.elems[i]) {
+            matched[1] = true;
+            if (matched[0]) goto err;
+        }
+    }
+
+    arena = &g_arena_scratch[matched[0] ? 1 : 0];
+    mark  = arena->mark();
+
+    return;
+err:
+    Panic("Both scratch arenas passed as conflicts to scratch_acquire");
+}
+
+ScratchArenaHandle::~ScratchArenaHandle() {
+    arena->restore(mark);
+}
+
+}  // namespace

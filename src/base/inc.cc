@@ -1,0 +1,12 @@
+#include "inc.hh"
+
+#include "timing.cc"
+#include "array.cc"
+#include "memory.cc"
+#include "arena.cc"
+#include "string.cc"
+#include "math.cc"
+#include "hasharray.cc"
+#include "channel.cc"
+#include "xml.cc"
+#include "test.cc"
