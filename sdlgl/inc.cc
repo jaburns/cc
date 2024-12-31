@@ -4,4 +4,4 @@
 
 // #include "gfx.cc"
 // #include "audio.cc"
-// #include "window.cc"
+#include "window.cc"

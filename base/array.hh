@@ -4,6 +4,19 @@ namespace {
 
 class Arena;
 
+// -----------------------------------------------------------------------------
+#define Template template <typename T, usize SIZE>
+
+Template class Array {
+  public:
+    T elems[SIZE];
+
+    T& operator[](usize index);
+};
+
+#undef Template
+// -----------------------------------------------------------------------------
+
 forall(T) class Slice {
   public:
     T*    elems = {};
@@ -15,6 +28,8 @@ forall(T) class Slice {
 };
 
 #define SliceLit(T, ...) (Slice<T>::from_ptr((T[]){__VA_ARGS__}, sizeof((T[]){__VA_ARGS__}) / sizeof(T)))
+
+// -----------------------------------------------------------------------------
 
 forall(T) class Vec {
   public:
@@ -35,8 +50,10 @@ forall(T) class Vec {
 forall(T) void print_value(Vec<char>* out, Slice<T>& slice);
 forall(T) void print_value(Vec<char>* out, Vec<T>& vec);
 
-template <typename T, usize CAPACITY>
-class InlineVec {
+// -----------------------------------------------------------------------------
+#define Template template <typename T, usize CAPACITY>
+
+Template class InlineVec {
   public:
     T     elems[CAPACITY] = {};
     usize count           = {};
@@ -48,7 +65,8 @@ class InlineVec {
     T*       pop();
 };
 
-template <typename T, usize CAPACITY>
-void print_value(Vec<char>* out, InlineVec<T, CAPACITY>& vec);
+Template void print_value(Vec<char>* out, InlineVec<T, CAPACITY>& vec);
 
+#undef Template
+// -----------------------------------------------------------------------------
 }  // namespace

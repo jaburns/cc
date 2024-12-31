@@ -1,6 +1,17 @@
 #include "inc.hh"
 namespace {
 // --------------------------------------------------------------------------------------------------------------------
+#define Template template <typename T, usize SIZE>
+#define This     Array<T, SIZE>
+
+Template T& This::operator[](usize index) {
+    if (index >= SIZE) Panic("Out of bounds access");
+    return elems[index];
+}
+
+#undef Template
+#undef This
+// --------------------------------------------------------------------------------------------------------------------
 #define This Slice<T>
 
 forall(T) Slice<T> Slice<T>::from_ptr(T* elems, usize count) {

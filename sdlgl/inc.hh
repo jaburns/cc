@@ -3,7 +3,7 @@
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
 
-// #include "../vendor/cimgui/imgui_impl.h"
+#include "../vendor/imgui/imgui_impl.h"
 #include "../vendor/minivorbis.h"
 #include "../vendor/stb_image.h"
 
@@ -11,4 +11,4 @@
 
 // #include "gfx.hh"
 // #include "audio.hh"
-// #include "window.hh"
+#include "window.hh"

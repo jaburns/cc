@@ -1,7 +1,6 @@
 #pragma once
 #include "inc.hh"
 namespace {
-// -----------------------------------------------------------------------------
 
 struct vec2;
 struct vec3;
@@ -12,8 +11,6 @@ struct ivec3;
 struct ivec4;
 struct mat2;
 struct mat4;
-
-#define sincosf(x, sinp, cosp) __sincosf(x, sinp, cosp)
 
 // -----------------------------------------------------------------------------
 
@@ -261,6 +258,8 @@ mat4& operator*=(mat4& lhs, mat4& rhs);
 void print_value(Vec<char>* out, mat4 v);
 
 // -----------------------------------------------------------------------------
+
+#define sincosf __sincosf
 
 f32 f32_lerp(f32 a, f32 b, f32 t);
 f32 f32_fract(f32 a);
