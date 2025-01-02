@@ -12,8 +12,6 @@ void SdlGlWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-    // ivec2 screen_size;
-
     screen_size.x = 1280;
     screen_size.y = 720;
 
@@ -51,21 +49,21 @@ void SdlGlWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback
     ImGui_ImplSdlGL3_Init(sdl_window, NULL);
 #endif
 
-    // SDL_AudioSpec obtained_spec;
-    // SDL_AudioSpec desired_spec = (SDL_AudioSpec){
-    //     .freq     = AUDIO_SAMPLE_RATE,
-    //     .format   = AUDIO_F32,
-    //     .channels = 2,
-    //     .samples  = 512,
-    //     .callback = sdl_audio_callback,
-    //     .userdata = win,
-    // };
+    SDL_AudioSpec obtained_spec;
+    SDL_AudioSpec desired_spec = (SDL_AudioSpec){
+        .freq     = AUDIO_SAMPLE_RATE,
+        .format   = AUDIO_F32,
+        .channels = 2,
+        .samples  = 512,
+        .callback = sdl_audio_callback,
+        .userdata = this,
+    };
 
-    // sdl_audio_device = SDL_OpenAudioDevice(NULL, 0, &desired_spec, &obtained_spec, 0);
-    // if (sdl_audio_device == 0) {
-    //     Panic("Failed to open audio device: %s\n", SDL_GetError());
-    // }
-    // SDL_PauseAudioDevice(sdl_audio_device, 0);
+    sdl_audio_device = SDL_OpenAudioDevice(NULL, 0, &desired_spec, &obtained_spec, 0);
+    if (sdl_audio_device == 0) {
+        Panic("Failed to open audio device: %s\n", SDL_GetError());
+    }
+    SDL_PauseAudioDevice(sdl_audio_device, 0);
 
     for (u32 i = 0; i < SDL_NumJoysticks(); ++i) {
         printf("Using joystick: %s\n", SDL_JoystickNameForIndex(i));
@@ -144,7 +142,7 @@ i32 SdlGlWindow::poll() {
             }
             case SDL_JOYAXISMOTION: {
                 // printf("Joystick %d axis %d moved to %d\n", event.jaxis.which, event.jaxis.axis, event.jaxis.value);
-                if (event.jaxis.which == active_joystick_id && event.jaxis.axis < JOYSTICK_AXIS_COUNT) {
+                if (event.jaxis.which == active_joystick_id && event.jaxis.axis < JoystickState::AXIS_COUNT) {
                     joystick.axis_values[event.jaxis.axis] =
                         event.jaxis.value < 0 ? (f32)event.jaxis.value / 32768.0 : (f32)event.jaxis.value / 32767.0;
                 }
@@ -152,14 +150,14 @@ i32 SdlGlWindow::poll() {
             }
             case SDL_JOYBUTTONDOWN: {
                 // printf("Joystick %d button %d pressed\n", event.jbutton.which, event.jbutton.button);
-                if (event.jbutton.which == active_joystick_id && event.jbutton.button < JOYSTICK_BUTTON_COUNT) {
+                if (event.jbutton.which == active_joystick_id && event.jbutton.button < JoystickState::BUTTON_COUNT) {
                     joystick.buttons_down[event.jbutton.button] = true;
                 }
                 break;
             }
             case SDL_JOYBUTTONUP: {
                 // printf("Joystick %d button %d released\n", event.jbutton.which, event.jbutton.button);
-                if (event.jbutton.which == active_joystick_id && event.jbutton.button < JOYSTICK_BUTTON_COUNT) {
+                if (event.jbutton.which == active_joystick_id && event.jbutton.button < JoystickState::BUTTON_COUNT) {
                     joystick.buttons_down[event.jbutton.button] = false;
                 }
                 break;

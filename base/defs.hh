@@ -118,9 +118,10 @@ struct NoCopy {
     }
 
 forall(T) struct AtomicVal {
-    T val;
+    T unsafe_inner;
     static_assert(std::atomic<T>::is_always_lock_free);
-    std::atomic<T>* as_atomic() { return (std::atomic<T>*)&this->val; }
+    std::atomic<T>& operator*() { return *(std::atomic<T>*)&this->unsafe_inner; }
+    std::atomic<T>* ptr() { return (std::atomic<T>*)&this->unsafe_inner; }
 };
 
 forall(T) T max(T a, T b) { return a > b ? a : b; }

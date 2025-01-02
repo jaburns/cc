@@ -7,8 +7,7 @@ class Arena;
 // -----------------------------------------------------------------------------
 #define Template template <typename T, usize SIZE>
 
-Template class Array {
-  public:
+Template struct Array {
     T elems[SIZE];
 
     T& operator[](usize index);
@@ -17,25 +16,23 @@ Template class Array {
 #undef Template
 // -----------------------------------------------------------------------------
 
-forall(T) class Slice {
-  public:
-    T*    elems = {};
-    usize count = {};
+forall(T) struct Slice {
+    T*    elems;
+    usize count;
 
     static Slice from_ptr(T* elems, usize count);
 
     T& operator[](usize index);
 };
 
-#define SliceLit(T, ...) (Slice<T>::from_ptr((T[]){__VA_ARGS__}, sizeof((T[]){__VA_ARGS__}) / sizeof(T)))
+#define Slice(v0, ...) (Slice<decltype(v0)>::from_ptr((decltype(v0)[]){v0, __VA_ARGS__}, sizeof((decltype(v0)[]){v0, __VA_ARGS__}) / sizeof(decltype(v0))))
 
 // -----------------------------------------------------------------------------
 
-forall(T) class Vec {
-  public:
-    T*    elems    = {};
-    usize count    = {};
-    usize capacity = {};
+forall(T) struct Vec {
+    T*    elems;
+    usize count;
+    usize capacity;
 
     static Vec alloc(Arena* arena, usize capacity);
     static Vec from_ptr(T* ptr, usize capacity);
@@ -53,10 +50,9 @@ forall(T) void print_value(Vec<char>* out, Vec<T>& vec);
 // -----------------------------------------------------------------------------
 #define Template template <typename T, usize CAPACITY>
 
-Template class InlineVec {
-  public:
-    T     elems[CAPACITY] = {};
-    usize count           = {};
+Template struct InlineVec {
+    T     elems[CAPACITY];
+    usize count;
 
     T& operator[](usize index);
 

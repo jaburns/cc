@@ -2,8 +2,6 @@
 #include "inc.hh"
 namespace {
 
-#define ARENA_MIN_ALIGNMENT 16
-
 struct ArenaMark {
     u8* ptr;
 };
@@ -34,14 +32,15 @@ class Arena {
     forall(T) T* alloc_resource(void (*drop)(T*));
 };
 
-class ScratchArenaHandle : public NoCopy {
-  public:
-    Arena*    arena = {};
-    ArenaMark mark  = {};
+class ScratchArena : public NoCopy {
+    ArenaMark mark = {};
 
-    ScratchArenaHandle();
-    ScratchArenaHandle(Slice<Arena*> conflicts);
-    ~ScratchArenaHandle();
+  public:
+    Arena* arena = {};
+
+    ScratchArena();
+    ScratchArena(Slice<Arena*> conflicts);
+    ~ScratchArena();
 };
 
 void arena_scratch_thread_local_create(MemoryAllocator allocator, usize block_size);

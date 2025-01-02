@@ -35,10 +35,9 @@ forall(T, ... Args) void x_log_print(T value, Args... args);
         printf("\n");                              \
     } while (0)
 
-class Str {
-  public:
-    cchar* elems = {};
-    usize  count = {};
+struct Str {
+    cchar* elems;
+    usize  count;
 
     static Str from_file(cchar* filename);
     static Str from_ptr(cchar* elems, usize count);

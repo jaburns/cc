@@ -14,7 +14,7 @@ forall(T) This This::alloc(Arena* arena, usize capacity) {
 }
 
 forall(T) void This::push(T* item) {
-    u32 cur_buf_reserve = std::atomic_fetch_add_explicit(cur_buffer_reserve.as_atomic(), 1, std::memory_order_relaxed);
+    u32 cur_buf_reserve = std::atomic_fetch_add_explicit(cur_buffer_reserve.ptr(), 1, std::memory_order_relaxed);
     u32 buf             = cur_buf_reserve & 0x80000000 ? 1 : 0;
     u32 reserved_idx    = cur_buf_reserve & 0x7fffffff;
 
@@ -25,26 +25,26 @@ forall(T) void This::push(T* item) {
     T* target = &buffer[buf][reserved_idx];
     *target   = *item;
 
-    std::atomic_fetch_add_explicit(count_commit[buf].as_atomic(), 1, std::memory_order_release);
+    std::atomic_fetch_add_explicit(count_commit[buf].ptr(), 1, std::memory_order_release);
 }
 
 #undef This
 #define This ChannelIter<T>
 
 forall(T) This This::start(Channel<T>* chan) {
-    u32 prev_peek        = std::atomic_load_explicit(chan->cur_buffer_reserve.as_atomic(), std::memory_order_acquire);
+    u32 prev_peek        = std::atomic_load_explicit(chan->cur_buffer_reserve.ptr(), std::memory_order_acquire);
     u32 new_value        = prev_peek & 0x80000000 ? 0 : 0x80000000;
-    u32 prev_buf_reserve = std::atomic_exchange_explicit(chan->cur_buffer_reserve.as_atomic(), new_value, std::memory_order_acq_rel);
+    u32 prev_buf_reserve = std::atomic_exchange_explicit(chan->cur_buffer_reserve.ptr(), new_value, std::memory_order_acq_rel);
 
     u32 prev_buf          = prev_peek & 0x80000000 ? 1 : 0;
     u32 prev_reserved_idx = prev_buf_reserve & 0x7fffffff;
 
     for (;;) {
-        u32 check = std::atomic_load_explicit(chan->count_commit[prev_buf].as_atomic(), std::memory_order_acquire);
+        u32 check = std::atomic_load_explicit(chan->count_commit[prev_buf].ptr(), std::memory_order_acquire);
         if (check == prev_reserved_idx) break;
     }
 
-    chan->count_commit[prev_buf].val = 0;
+    *chan->count_commit[prev_buf] = 0;
 
     ChannelIter it = {};
     it.count       = prev_reserved_idx,

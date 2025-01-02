@@ -10,5 +10,5 @@
 #include "../base/inc.hh"
 
 // #include "gfx.hh"
-// #include "audio.hh"
+#include "audio.hh"
 #include "window.hh"

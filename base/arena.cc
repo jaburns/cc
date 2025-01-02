@@ -47,7 +47,7 @@ void Arena::clear() {
 forall(T) T* Arena::alloc_one() {
     usize size = sizeof(T);
 
-    cur     = (u8*)(((usize)cur + (ARENA_MIN_ALIGNMENT - 1)) & ~(ARENA_MIN_ALIGNMENT - 1));
+    cur     = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
     u8* ret = cur;
     allocator.memory_commit_size(&reservation, (cur - reservation.base) + size);
     cur += size;
@@ -58,7 +58,7 @@ forall(T) T* Arena::alloc_one() {
 forall(T) Slice<T> Arena::alloc_many(usize count) {
     usize size = sizeof(T) * count;
 
-    cur     = (u8*)(((usize)cur + (ARENA_MIN_ALIGNMENT - 1)) & ~(ARENA_MIN_ALIGNMENT - 1));
+    cur     = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
     u8* ret = cur;
     allocator.memory_commit_size(&reservation, (cur - reservation.base) + size);
     cur += size;
@@ -90,12 +90,12 @@ void arena_scratch_thread_local_destroy() {
     g_arena_scratch[1].destroy();
 }
 
-ScratchArenaHandle::ScratchArenaHandle() {
+ScratchArena::ScratchArena() {
     arena = &g_arena_scratch[0];
     mark  = arena->mark();
 }
 
-ScratchArenaHandle::ScratchArenaHandle(Slice<Arena*> conflicts) {
+ScratchArena::ScratchArena(Slice<Arena*> conflicts) {
     bool matched[2] = {};
     for (u32 i = 0; i < conflicts.count; ++i) {
         if (&g_arena_scratch[0] == conflicts.elems[i]) {
@@ -115,7 +115,7 @@ err:
     Panic("Both scratch arenas passed as conflicts to scratch_acquire");
 }
 
-ScratchArenaHandle::~ScratchArenaHandle() {
+ScratchArena::~ScratchArena() {
     arena->restore(mark);
 }
 
