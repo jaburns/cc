@@ -9,26 +9,43 @@ Template T& This::operator[](usize index) {
     return elems[index];
 }
 
+Template Slice<T> This::slice() {
+    return Slice<T>::from_ptr(elems, SIZE);
+}
+
 #undef Template
 #undef This
 // --------------------------------------------------------------------------------------------------------------------
 #define This Slice<T>
 
-forall(T) Slice<T> Slice<T>::from_ptr(T* elems, usize count) {
+forall(T) This This::from_ptr(T* elems, usize count) {
     Slice<T> ret = {};
     ret.elems    = elems;
     ret.count    = count;
     return ret;
 }
 
-forall(T) T& Slice<T>::operator[](usize index) {
+forall(T) T& This::operator[](usize index) {
     if (index >= count) Panic("Out of bounds access");
     return elems[index];
 }
 
+forall(T) forall(U) bool This::contains_all(Slice<U> search, bool (*compare)(T* a, U* b)) {
+    usize found = 0;
+    for (usize i = 0; i < count; ++i) {
+        for (usize j = 0; j < search.count; ++j) {
+            if (compare(&elems[i], &search[j])) {
+                if (++found == search.count) return true;
+                break;
+            }
+        }
+    }
+    return false;
+}
+
 forall(T) void print_value(Vec<char>* out, Slice<T>& slice) {
     print_value(out, slice.elems[0]);
-    for (u32 i = 1; i < slice.count; ++i) {
+    for (usize i = 1; i < slice.count; ++i) {
         print_value(out, ",");
         print_value(out, slice.elems[i]);
     }

@@ -2,4 +2,5 @@
 
 #include "../base/inc.cc"
 
+#include "audio.cc"
 #include "window.cc"

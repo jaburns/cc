@@ -216,6 +216,10 @@ i32 Str::parse_i32(i32 base) {
     return strtol(buffer, NULL, base);
 }
 
+bool cstr_eq(cchar* a, cchar* b) {
+    return strcmp(a, b) == 0;
+}
+
 void print_value(Vec<char>* out, U64PrintedWithCommas value) {
     char  buffer[32];
     char  out_buffer[32];

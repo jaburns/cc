@@ -56,6 +56,8 @@ forall(T) T* Arena::alloc_one() {
 }
 
 forall(T) Slice<T> Arena::alloc_many(usize count) {
+    if (count == 0) return Slice<T>{};
+
     usize size = sizeof(T) * count;
 
     cur     = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));

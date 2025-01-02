@@ -63,8 +63,9 @@ struct Str {
     u32 parse_u32(i32 base);
     i32 parse_i32(i32 base);
 };
-
 void print_value(Vec<char>* out, Str value);
+
+bool cstr_eq(cchar* a, cchar* b);
 
 struct U64PrintedWithCommas {
     u64 val;

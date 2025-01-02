@@ -126,7 +126,7 @@ forall(T) struct AtomicVal {
 
 forall(T) T max(T a, T b) { return a > b ? a : b; }
 forall(T) T min(T a, T b) { return a < b ? a : b; }
-forall(T) T clamp(T a, T min, T max) { return max(min, min(max, a)); }
+forall(T) T clamp(T a, T min_, T max_) { return max(min_, min(max_, a)); }
 forall(T) T clamp01(T a) { return max((T)0, min((T)1, a)); }
 forall(T) i32 sign(T a) { return a >= 0 ? 1 : -1; }
 i32 next_power_of_2(i32 a) { return a <= 1 ? 1 : 1u << (32 - __builtin_clz(a - 1)); }
