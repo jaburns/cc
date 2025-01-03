@@ -11,7 +11,165 @@ VKAPI_ATTR VkBool32 VKAPI_CALL gfx_vulkan_debug_callback(
     return VK_FALSE;
 }
 
-void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
+struct Vertex {
+    vec2 pos;
+    vec3 color;
+
+    static VkVertexInputBindingDescription get_binding_desc() {
+        return VkVertexInputBindingDescription{
+            .binding   = 0,
+            .stride    = sizeof(Vertex),
+            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+        };
+    }
+
+    static Array<VkVertexInputAttributeDescription, 2> get_attribute_descs() {
+        return Array<VkVertexInputAttributeDescription, 2>{{
+            {
+                .binding  = 0,
+                .location = 0,
+                .format   = VK_FORMAT_R32G32_SFLOAT,
+                .offset   = offsetof(Vertex, pos),
+            },
+            {
+                .binding  = 0,
+                .location = 1,
+                .format   = VK_FORMAT_R32G32B32_SFLOAT,
+                .offset   = offsetof(Vertex, color),
+            },
+        }};
+    }
+};
+
+Array<Vertex, 3> vertices = Array<Vertex, 3>{{
+    {vec2(0.0f, -0.5f), vec3(1.0f, 0.0f, 1.0f)},
+    {vec2(0.5f, 0.5f), vec3(1.0f, 1.0f, 0.0f)},
+    {vec2(-0.5f, 0.5f), vec3(0.0f, 1.0f, 1.0f)},
+}};
+
+template <typename T, auto Fn, typename... Args>
+Slice<T> vk_get_slice(Arena* arena, Args... args) {
+    u32 count = 0;
+    Fn(args..., &count, nullptr);
+    if (count == 0) return {};
+    Slice<T> ret_slice = arena->alloc_many<T>(count);
+    Fn(args..., &count, ret_slice.elems);
+    return ret_slice;
+}
+
+template <auto Fn, typename VecType, typename... Args>
+void vk_get_vec(VecType* vec, Args... args) {
+    u32 count = 0;
+    Fn(args..., &count, nullptr);
+    if (count == 0) {
+        vec->count = 0;
+        return;
+    }
+    if (count > vec->capacity) {
+        Panic("Results from vk_get_into_vec would extend beyond the capacity of the target vec");
+    }
+    Fn(args..., &count, vec->elems);
+    vec->count = count;
+}
+
+u32 vk_find_memory_type(VkPhysicalDevice physical_device, u32 type_filter, VkMemoryPropertyFlags properties) {
+    VkPhysicalDeviceMemoryProperties mem_properties;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
+
+    for (u32 i = 0; i < mem_properties.memoryTypeCount; i++) {
+        if ((type_filter & (1 << i)) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+            return i;
+        }
+    }
+    Panic("vk_find_memory_type failed to find anything");
+}
+
+void GfxWindow::create_swap_chain() {
+    log("creating swap chain");
+
+    if (swap_chain) {
+        vkDeviceWaitIdle(device);
+        for (usize i = 0; i < swap_chain_framebuffers.count; ++i) {
+            vkDestroyFramebuffer(device, swap_chain_framebuffers[i], nullptr);
+        }
+        for (usize i = 0; i < swap_chain_image_views.count; ++i) {
+            vkDestroyImageView(device, swap_chain_image_views[i], nullptr);
+        }
+        vkDestroySwapchainKHR(device, swap_chain, nullptr);
+    }
+
+    VkSurfaceCapabilitiesKHR surface_capabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
+
+    VkExtent2D extent = surface_capabilities.currentExtent;
+    if (surface_capabilities.currentExtent.width == UINT32_MAX) {
+        SDL_Vulkan_GetDrawableSize(sdl_window, (i32*)&extent.width, (i32*)&extent.height);
+        extent.width  = clamp(extent.width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
+        extent.height = clamp(extent.height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
+    }
+
+    u32 image_count = surface_capabilities.minImageCount + 1;
+    if (surface_capabilities.maxImageCount > 0 && image_count > surface_capabilities.maxImageCount) {
+        image_count = surface_capabilities.maxImageCount;
+    }
+
+    auto create_info = VkSwapchainCreateInfoKHR{
+        .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface          = surface,
+        .minImageCount    = image_count,
+        .imageFormat      = surface_format.format,
+        .imageColorSpace  = surface_format.colorSpace,
+        .imageExtent      = extent,
+        .imageArrayLayers = 1,
+        .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .preTransform     = surface_capabilities.currentTransform,
+        .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
+        .clipped          = VK_TRUE,
+        .oldSwapchain     = nullptr,
+    };
+    VKExpect(vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain), "Failed to create swap chain");
+
+    swap_chain_extent = extent;
+    vk_get_vec<vkGetSwapchainImagesKHR>(&swap_chain_images, device, swap_chain);
+
+    swap_chain_image_views.count = swap_chain_images.count;
+    for (u32 i = 0; i < swap_chain_image_views.count; ++i) {
+        auto create_info = VkImageViewCreateInfo{
+            .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .image                           = swap_chain_images[i],
+            .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
+            .format                          = surface_format.format,
+            .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+            .subresourceRange.baseMipLevel   = 0,
+            .subresourceRange.levelCount     = 1,
+            .subresourceRange.baseArrayLayer = 0,
+            .subresourceRange.layerCount     = 1,
+        };
+        VKExpect(vkCreateImageView(device, &create_info, nullptr, &swap_chain_image_views[i]), "Failed to create image views");
+    }
+
+    swap_chain_framebuffers.count = swap_chain_images.count;
+    for (u32 i = 0; i < swap_chain_framebuffers.count; ++i) {
+        VkImageView attachments[] = {
+            swap_chain_image_views.elems[i]
+        };
+
+        auto framebuffer_info = VkFramebufferCreateInfo{
+            .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .renderPass      = render_pass,
+            .attachmentCount = 1,
+            .pAttachments    = attachments,
+            .width           = swap_chain_extent.width,
+            .height          = swap_chain_extent.height,
+            .layers          = 1,
+        };
+        VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &swap_chain_framebuffers[i]), "Failed to create framebuffer");
+    }
+}
+
+void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
     ZeroStruct(this);
     auto scratch = Arena::create(memory_get_global_allocator(), 0);
 
@@ -42,20 +200,43 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
             1280, 720,
-            SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN
+            SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
         );
 
         if (!sdl_window) Panic("Failed to create SDL window: %s\n", SDL_GetError());
+
+        SDL_AudioSpec obtained_spec;
+        SDL_AudioSpec desired_spec = (SDL_AudioSpec){
+            .freq     = AUDIO_SAMPLE_RATE,
+            .format   = AUDIO_F32,
+            .channels = 2,
+            .samples  = 512,
+            .callback = sdl_audio_callback,
+            .userdata = this,
+        };
+
+        sdl_audio_device = SDL_OpenAudioDevice(NULL, 0, &desired_spec, &obtained_spec, 0);
+        if (sdl_audio_device == 0) {
+            Panic("Failed to open audio device: %s\n", SDL_GetError());
+        }
+        SDL_PauseAudioDevice(sdl_audio_device, 0);
+
+        for (u32 i = 0; i < SDL_NumJoysticks(); ++i) {
+            printf("Using joystick: %s\n", SDL_JoystickNameForIndex(i));
+            sdl_joystick       = SDL_JoystickOpen(i);
+            active_joystick_id = i;
+            break;
+        }
     }
     // create instance
     {
-        auto available_validation_layers = VKGetSlice0(vkEnumerateInstanceLayerProperties, VkLayerProperties, &scratch);
+        auto available_validation_layers = vk_get_slice<VkLayerProperties, vkEnumerateInstanceLayerProperties>(&scratch);
         Assert(available_validation_layers.contains_all<cchar*>(
             validation_layers.slice(),
             [](auto a, auto b) { return cstr_eq(a->layerName, *b); }
         ));
 
-        auto available_extensions = VKGetSlice(vkEnumerateInstanceExtensionProperties, VkExtensionProperties, &scratch, nullptr);
+        auto available_extensions = vk_get_slice<VkExtensionProperties, vkEnumerateInstanceExtensionProperties>(&scratch, nullptr);
         Assert(available_extensions.contains_all<cchar*>(
             instance_extensions.slice(),
             [](auto a, auto b) { return cstr_eq(a->extensionName, *b); }
@@ -105,10 +286,9 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
         if (!SDL_Vulkan_CreateSurface(sdl_window, instance, &surface)) Panic("Failed to create Vulkan surface: %s\n", SDL_GetError());
     }
     // create device
-    auto surface_capabilities = VkSurfaceCapabilitiesKHR{};
-    i32  graphics_queue_idx   = -1;
+    i32 graphics_queue_idx = -1;
     {
-        auto physical_devices = VKGetSlice(vkEnumeratePhysicalDevices, VkPhysicalDevice, &scratch, instance);
+        auto physical_devices = vk_get_slice<VkPhysicalDevice, vkEnumeratePhysicalDevices>(&scratch, instance);
         if (physical_devices.count == 0) Panic("Failed to find GPUs with Vulkan support");
 
         Slice<VkSurfaceFormatKHR> surface_formats = {};
@@ -119,7 +299,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             graphics_queue_idx = -1;
             present_queue_idx  = -1;
 
-            auto available_extensions = VKGetSlice(vkEnumerateDeviceExtensionProperties, VkExtensionProperties, &scratch, physical_device, nullptr);
+            auto available_extensions = vk_get_slice<VkExtensionProperties, vkEnumerateDeviceExtensionProperties>(&scratch, physical_device, nullptr);
 
             bool all_supported = available_extensions.contains_all<cchar*>(
                 device_extensions.slice(),
@@ -127,14 +307,12 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             );
             if (!all_supported) continue;
 
-            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
-
-            surface_formats = VKGetSlice(vkGetPhysicalDeviceSurfaceFormatsKHR, VkSurfaceFormatKHR, &scratch, physical_device, surface);
+            surface_formats = vk_get_slice<VkSurfaceFormatKHR, vkGetPhysicalDeviceSurfaceFormatsKHR>(&scratch, physical_device, surface);
             if (surface_formats.count == 0) continue;
-            auto present_modes = VKGetSlice(vkGetPhysicalDeviceSurfacePresentModesKHR, VkPresentModeKHR, &scratch, physical_device, surface);
+            auto present_modes = vk_get_slice<VkPresentModeKHR, vkGetPhysicalDeviceSurfacePresentModesKHR>(&scratch, physical_device, surface);
             if (present_modes.count == 0) continue;
 
-            auto queue_families = VKGetSlice(vkGetPhysicalDeviceQueueFamilyProperties, VkQueueFamilyProperties, &scratch, physical_device);
+            auto queue_families = vk_get_slice<VkQueueFamilyProperties, vkGetPhysicalDeviceQueueFamilyProperties>(&scratch, physical_device);
 
             for (i32 i = 0; i < queue_families.count; ++i) {
                 if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
@@ -240,76 +418,9 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
         };
         VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &render_pass), "Failed to create render pass");
     }
-    // create swap chain
-    {
-        VkExtent2D extent = surface_capabilities.currentExtent;
-        if (surface_capabilities.currentExtent.width == UINT32_MAX) {
-            SDL_Vulkan_GetDrawableSize(sdl_window, (i32*)&extent.width, (i32*)&extent.height);
-            extent.width  = clamp(extent.width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
-            extent.height = clamp(extent.height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
-        }
 
-        u32 image_count = surface_capabilities.minImageCount + 1;
-        if (surface_capabilities.maxImageCount > 0 && image_count > surface_capabilities.maxImageCount) {
-            image_count = surface_capabilities.maxImageCount;
-        }
+    create_swap_chain();
 
-        auto create_info = VkSwapchainCreateInfoKHR{
-            .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-            .surface          = surface,
-            .minImageCount    = image_count,
-            .imageFormat      = surface_format.format,
-            .imageColorSpace  = surface_format.colorSpace,
-            .imageExtent      = extent,
-            .imageArrayLayers = 1,
-            .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-            .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .preTransform     = surface_capabilities.currentTransform,
-            .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-            .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
-            .clipped          = VK_TRUE,
-            .oldSwapchain     = nullptr,
-        };
-        VKExpect(vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain), "Failed to create swap chain");
-
-        swap_chain_extent      = extent;
-        swap_chain_images      = VKGetSlice(vkGetSwapchainImagesKHR, VkImage, arena, device, swap_chain);
-        swap_chain_image_views = arena->alloc_many<VkImageView>(swap_chain_images.count);
-
-        for (u32 i = 0; i < swap_chain_images.count; i++) {
-            auto create_info = VkImageViewCreateInfo{
-                .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                .image                           = swap_chain_images[i],
-                .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
-                .format                          = surface_format.format,
-                .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                .subresourceRange.baseMipLevel   = 0,
-                .subresourceRange.levelCount     = 1,
-                .subresourceRange.baseArrayLayer = 0,
-                .subresourceRange.layerCount     = 1,
-            };
-            VKExpect(vkCreateImageView(device, &create_info, nullptr, &swap_chain_image_views.elems[i]), "Failed to create image views");
-        }
-
-        swap_chain_framebuffers = arena->alloc_many<VkFramebuffer>(swap_chain_image_views.count);
-
-        for (u32 i = 0; i < swap_chain_image_views.count; i++) {
-            VkImageView attachments[] = {
-                swap_chain_image_views.elems[i]
-            };
-
-            auto framebuffer_info = VkFramebufferCreateInfo{
-                .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-                .renderPass      = render_pass,
-                .attachmentCount = 1,
-                .pAttachments    = attachments,
-                .width           = swap_chain_extent.width,
-                .height          = swap_chain_extent.height,
-                .layers          = 1,
-            };
-            VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &swap_chain_framebuffers[i]), "Failed to create framebuffer");
-        }
-    }
     // create graphics pipeline
     {
         Slice<u8> vert_code   = fs_read_file_bytes(&scratch, "shaders/bin/triangle.vertex.spv");
@@ -348,12 +459,16 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             vert_shader_stage_info,
             frag_shader_stage_info,
         };
+
+        auto vertex_binding_desc    = Vertex::get_binding_desc();
+        auto vertex_attribute_descs = Vertex::get_attribute_descs();
+
         auto vertex_input_info = VkPipelineVertexInputStateCreateInfo{
             .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .vertexBindingDescriptionCount   = 0,
-            .pVertexBindingDescriptions      = nullptr,
-            .vertexAttributeDescriptionCount = 0,
-            .pVertexAttributeDescriptions    = nullptr,
+            .vertexBindingDescriptionCount   = 1,
+            .pVertexBindingDescriptions      = &vertex_binding_desc,
+            .vertexAttributeDescriptionCount = (u32)vertex_attribute_descs.count,
+            .pVertexAttributeDescriptions    = vertex_attribute_descs.elems,
         };
         auto input_assembly = VkPipelineInputAssemblyStateCreateInfo{
             .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -430,15 +545,41 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
 
         vkDestroyShaderModule(device, frag_module, nullptr);
         vkDestroyShaderModule(device, vert_module, nullptr);
-    }
-    // create framebuffers and command buffer
-    {
+
         auto pool_info = VkCommandPoolCreateInfo{
             .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
             .queueFamilyIndex = (u32)graphics_queue_idx,
         };
         VKExpect(vkCreateCommandPool(device, &pool_info, nullptr, &command_pool), "Failed to create command pool");
+
+        // vertex buffer
+        {
+            auto vertex_buffer_info = VkBufferCreateInfo{
+                .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size        = sizeof(Vertex) * vertices.count,
+                .usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            };
+            VKExpect(vkCreateBuffer(device, &vertex_buffer_info, nullptr, &vertex_buffer), "Failed to create vertex buffer");
+
+            VkMemoryRequirements mem_requirements;
+            vkGetBufferMemoryRequirements(device, vertex_buffer, &mem_requirements);
+
+            auto vertex_alloc_info = VkMemoryAllocateInfo{
+                .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .allocationSize  = mem_requirements.size,
+                .memoryTypeIndex = vk_find_memory_type(physical_device, mem_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+            };
+            VKExpect(vkAllocateMemory(device, &vertex_alloc_info, nullptr, &vertex_buffer_memory), "Failed to allocate vertex buffer memory");
+
+            vkBindBufferMemory(device, vertex_buffer, vertex_buffer_memory, 0);
+
+            void* data;
+            vkMapMemory(device, vertex_buffer_memory, 0, vertex_buffer_info.size, 0, &data);
+            memcpy(data, vertices.elems, vertex_buffer_info.size);
+            vkUnmapMemory(device, vertex_buffer_memory);
+        }
 
         auto alloc_info = VkCommandBufferAllocateInfo{
             .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -447,9 +588,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .commandBufferCount = 2,
         };
         VKExpect(vkAllocateCommandBuffers(device, &alloc_info, command_buffers.elems), "Failed to allocate command buffers");
-    }
-    // create sync objects
-    {
+
         auto semaphore_info = VkSemaphoreCreateInfo{
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         };
@@ -467,40 +606,150 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
     scratch.destroy();
 }
 
+void GfxWindow::wait_device_idle() {
+    vkDeviceWaitIdle(device);
+}
+
 bool GfxWindow::poll() {
+    mouse_delta       = IVEC2_ZERO;
+    mouse_delta_wheel = 0.f;
+
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+        // ImGui_ImplSdlGL3_ProcessEvent(&event);
+        // bool imgui_wants_mouse    = ImGui::GetIO().WantCaptureMouse;
+        // bool imgui_wants_keyboard = ImGui::GetIO().WantCaptureKeyboard;
+        bool imgui_wants_mouse    = false;
+        bool imgui_wants_keyboard = false;
+
         switch (event.type) {
+            case SDL_WINDOWEVENT: {
+                switch (event.window.event) {
+                    case SDL_WINDOWEVENT_RESIZED: {
+                        framebuffer_resized = true;
+                        // i32 w         = event.window.data1;
+                        // i32 h         = event.window.data2;
+                        // screen_size.x = w;
+                        // screen_size.y = h;
+                        break;
+                    }
+                }
+                break;
+            }
+            case SDL_MOUSEBUTTONDOWN: {
+                if (!imgui_wants_mouse) {
+                    mouse_button = true;
+                }
+                break;
+            }
+            case SDL_MOUSEBUTTONUP: {
+                if (!imgui_wants_mouse) {
+                    mouse_button = false;
+                }
+                break;
+            }
+            case SDL_MOUSEMOTION: {
+                if (!imgui_wants_mouse) {
+                    mouse_delta.x = event.motion.xrel;
+                    mouse_delta.y = -event.motion.yrel;
+                }
+                break;
+            }
+            case SDL_MOUSEWHEEL: {
+                if (!imgui_wants_mouse) {
+                    mouse_delta_wheel = event.wheel.preciseY;
+                }
+                break;
+            }
             case SDL_QUIT: {
                 return false;
             }
             case SDL_KEYDOWN: {
+                if (!imgui_wants_keyboard) {
+                    keyboard.scancodes_down[event.key.keysym.scancode] = true;
+                }
                 return false;
             }
-            default: {
+            case SDL_KEYUP: {
+                if (!imgui_wants_keyboard) {
+                    keyboard.scancodes_down[event.key.keysym.scancode] = false;
+                }
+                break;
+            }
+            case SDL_JOYAXISMOTION: {
+                // printf("Joystick %d axis %d moved to %d\n", event.jaxis.which, event.jaxis.axis, event.jaxis.value);
+                if (event.jaxis.which == active_joystick_id && event.jaxis.axis < JoystickState::AXIS_COUNT) {
+                    joystick.axis_values[event.jaxis.axis] =
+                        event.jaxis.value < 0 ? (f32)event.jaxis.value / 32768.0 : (f32)event.jaxis.value / 32767.0;
+                }
+                break;
+            }
+            case SDL_JOYBUTTONDOWN: {
+                // printf("Joystick %d button %d pressed\n", event.jbutton.which, event.jbutton.button);
+                if (event.jbutton.which == active_joystick_id && event.jbutton.button < JoystickState::BUTTON_COUNT) {
+                    joystick.buttons_down[event.jbutton.button] = true;
+                }
+                break;
+            }
+            case SDL_JOYBUTTONUP: {
+                // printf("Joystick %d button %d released\n", event.jbutton.which, event.jbutton.button);
+                if (event.jbutton.which == active_joystick_id && event.jbutton.button < JoystickState::BUTTON_COUNT) {
+                    joystick.buttons_down[event.jbutton.button] = false;
+                }
+                break;
             }
         }
     }
+    // ImGui_ImplSdlGL3_NewFrame(sdl_window);
     return true;
 }
 
 void GfxWindow::swap() {
     vkWaitForFences(device, 1, &in_flight_fences[cur_framebuffer_idx], VK_TRUE, UINT64_MAX);
+
+    u32      image_index;
+    VkResult result = vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, image_available_semaphores[cur_framebuffer_idx], nullptr, &image_index);
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebuffer_resized) {
+        log("vkAcquireNextImageKHR result: ", result);
+        framebuffer_resized = false;
+
+        // dummy submission to reset the image_available semaphore
+        {
+            VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT};
+
+            auto dummy_submit_info = VkSubmitInfo{
+                .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .waitSemaphoreCount   = 1,
+                .pWaitSemaphores      = &image_available_semaphores[cur_framebuffer_idx],
+                .pWaitDstStageMask    = waitStages,
+                .commandBufferCount   = 0,
+                .pCommandBuffers      = nullptr,
+                .signalSemaphoreCount = 0,
+                .pSignalSemaphores    = nullptr,
+            };
+            vkQueueSubmit(graphics_queue, 1, &dummy_submit_info, VK_NULL_HANDLE);
+            vkQueueWaitIdle(graphics_queue);
+        }
+
+        create_swap_chain();
+        return;
+    } else if (result != VK_SUCCESS) {
+        Panic("Failed to acquire swap chain image");
+    }
+
     vkResetFences(device, 1, &in_flight_fences[cur_framebuffer_idx]);
 
-    u32 image_index;
-    vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, image_available_semaphores[cur_framebuffer_idx], nullptr, &image_index);
-    vkResetCommandBuffer(command_buffers[cur_framebuffer_idx], 0);
-
     {
-        auto& command_buffer = command_buffers[cur_framebuffer_idx];
+        auto& buffer = command_buffers[cur_framebuffer_idx];
+        vkResetCommandBuffer(buffer, 0);
 
         auto begin_info = VkCommandBufferBeginInfo{
             .sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags            = 0,
             .pInheritanceInfo = nullptr,
         };
-        VKExpect(vkBeginCommandBuffer(command_buffer, &begin_info), "Failed to begin recording command buffer");
+        VKExpect(vkBeginCommandBuffer(buffer, &begin_info), "Failed to begin recording command buffer");
 
         auto clear_color = VkClearValue{{{0.0f, 0.0f, 0.0f, 1.0f}}};
 
@@ -513,9 +762,9 @@ void GfxWindow::swap() {
             .clearValueCount   = 1,
             .pClearValues      = &clear_color,
         };
-        vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+        vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+        vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
         auto viewport = VkViewport{
             .x        = 0.0f,
@@ -525,57 +774,59 @@ void GfxWindow::swap() {
             .minDepth = 0.0f,
             .maxDepth = 1.0f,
         };
-        vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+        vkCmdSetViewport(buffer, 0, 1, &viewport);
 
         auto scissor = VkRect2D{
             .offset = {0, 0},
             .extent = swap_chain_extent,
         };
-        vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+        vkCmdSetScissor(buffer, 0, 1, &scissor);
 
-        vkCmdDraw(command_buffer, 3, 1, 0, 0);
+        VkDeviceSize offsets[] = {0};
+        vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffer, offsets);
 
-        vkCmdEndRenderPass(command_buffer);
+        vkCmdDraw(buffer, vertices.count, 1, 0, 0);
 
-        VKExpect(vkEndCommandBuffer(command_buffer), "Failed to record command buffer");
+        vkCmdEndRenderPass(buffer);
+
+        VKExpect(vkEndCommandBuffer(buffer), "Failed to record command buffer");
     }
 
-    VkSemaphore wait_semaphores[] = {
-        image_available_semaphores[cur_framebuffer_idx],
-    };
-    // wait until image available before running the color-attachment-output stage
     VkPipelineStageFlags wait_stages[] = {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
     };
-    VkSemaphore signal_semaphores[] = {
-        render_finished_semaphores[cur_framebuffer_idx],
-    };
-    VkSwapchainKHR swap_chains[] = {
-        swap_chain,
-    };
-
     auto submit_info = VkSubmitInfo{
         .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount   = 1,
-        .pWaitSemaphores      = wait_semaphores,
+        .pWaitSemaphores      = &image_available_semaphores[cur_framebuffer_idx],
         .pWaitDstStageMask    = wait_stages,
         .commandBufferCount   = 1,
         .pCommandBuffers      = &command_buffers[cur_framebuffer_idx],
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores    = signal_semaphores,
+        .pSignalSemaphores    = &render_finished_semaphores[cur_framebuffer_idx],
     };
     VKExpect(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fences[cur_framebuffer_idx]), "Failed to submit draw command buffer");
 
     auto present_info = VkPresentInfoKHR{
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores    = signal_semaphores,
+        .pWaitSemaphores    = &render_finished_semaphores[cur_framebuffer_idx],
         .swapchainCount     = 1,
-        .pSwapchains        = swap_chains,
+        .pSwapchains        = &swap_chain,
         .pImageIndices      = &image_index,
     };
 
-    vkQueuePresentKHR(present_queue, &present_info);
+    result = vkQueuePresentKHR(present_queue, &present_info);
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebuffer_resized) {
+        log("vkQueuePresentKHR result: ", result);
+        framebuffer_resized = false;
+        create_swap_chain();
+    } else if (result != VK_SUCCESS) {
+        Panic("Failed to present swap chain image");
+    }
+
+    // ImGui::Render();
+    // ImGui_ImplSdlGL3_RenderDrawData(ImGui::GetDrawData());
 
     cur_framebuffer_idx = (cur_framebuffer_idx + 1) % MAX_FRAMES_IN_FLIGHT;
 }

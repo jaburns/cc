@@ -2,42 +2,77 @@
 #include "inc.hh"
 namespace {
 
+struct KeyboardState {
+    Array<bool, SDL_NUM_SCANCODES> scancodes_down;
+};
+
+struct JoystickState {
+    static constexpr usize AXIS_COUNT   = 32;
+    static constexpr usize BUTTON_COUNT = 32;
+
+    Array<f32, AXIS_COUNT>    axis_values;
+    Array<bool, BUTTON_COUNT> buttons_down;
+};
+
 struct GfxWindow {
     static constexpr bool  ENABLE_VALIDATION_LAYERS = true;
     static constexpr usize MAX_FRAMES_IN_FLIGHT     = 2;
+    static constexpr usize MAX_SWAP_CHAIN_IMAGES    = 4;
 
-    SDL_Window*      sdl_window;
+    SDL_Window* sdl_window;
+
     VkInstance       instance;
     VkPhysicalDevice physical_device;
     VkDevice         device;
     VkQueue          graphics_queue;
     VkQueue          present_queue;
 
+    VkSurfaceKHR       surface;
     VkSurfaceFormatKHR surface_format;
 
-    VkSurfaceKHR         surface;
-    VkSwapchainKHR       swap_chain;
-    VkExtent2D           swap_chain_extent;
-    Slice<VkImage>       swap_chain_images;
-    Slice<VkImageView>   swap_chain_image_views;
-    Slice<VkFramebuffer> swap_chain_framebuffers;
-    VkRenderPass         render_pass;
-    VkPipelineLayout     pipeline_layout;
-    VkPipeline           graphics_pipeline;
-    VkCommandPool        command_pool;
-    u32                  cur_framebuffer_idx;
+    VkSwapchainKHR swap_chain;
+    VkExtent2D     swap_chain_extent;
+
+    InlineVec<VkImage, MAX_SWAP_CHAIN_IMAGES>       swap_chain_images;
+    InlineVec<VkImageView, MAX_SWAP_CHAIN_IMAGES>   swap_chain_image_views;
+    InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> swap_chain_framebuffers;
+
+    VkRenderPass     render_pass;
+    VkPipelineLayout pipeline_layout;
+    VkPipeline       graphics_pipeline;
+    VkCommandPool    command_pool;
+    u32              cur_framebuffer_idx;
+
+    bool framebuffer_resized;
 
     Array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> command_buffers;
     Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     image_available_semaphores;
     Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     render_finished_semaphores;
     Array<VkFence, MAX_FRAMES_IN_FLIGHT>         in_flight_fences;
 
-    AudioCallbackFn audio_callback_fn;
-    AudioPlayer     audio_player;
+    VkBuffer       vertex_buffer;
+    VkDeviceMemory vertex_buffer_memory;
 
-    void init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_callback);
+    SDL_AudioDeviceID sdl_audio_device;
+    AudioCallbackFn   audio_callback_fn;
+    AudioPlayer       audio_player;
+
+    // ImGuiContext* imgui_context;
+
+    SDL_JoystickID active_joystick_id;
+    SDL_Joystick*  sdl_joystick;
+    JoystickState  joystick;
+    KeyboardState  keyboard;
+    ivec2          screen_size;
+    ivec2          mouse_delta;
+    f32            mouse_delta_wheel;
+    bool           mouse_button;
+
+    void init(cchar* window_title, SDL_AudioCallback sdl_audio_callback);
+    void create_swap_chain();
     bool poll();
     void swap();
+    void wait_device_idle();
 };
 
 #define VKExpect(expr, msg)                                             \
@@ -46,21 +81,10 @@ struct GfxWindow {
         if (result != VK_SUCCESS) Panic("Error %d :: %s", result, msg); \
     } while (0)
 
-#define VKGetSlice0(fn_name, type, arena_ptr) [&] {               \
-    u32 count;                                                    \
-    fn_name(&count, nullptr);                                     \
-    if (count == 0) return Slice<type>{};                         \
-    Slice<type> ret_slice = (arena_ptr)->alloc_many<type>(count); \
-    fn_name(&count, ret_slice.elems);                             \
-    return ret_slice;                                             \
-}()
-#define VKGetSlice(fn_name, type, arena_ptr, ...) [&] {           \
-    u32 count;                                                    \
-    fn_name(__VA_ARGS__, &count, nullptr);                        \
-    if (count == 0) return Slice<type>{};                         \
-    Slice<type> ret_slice = (arena_ptr)->alloc_many<type>(count); \
-    fn_name(__VA_ARGS__, &count, ret_slice.elems);                \
-    return ret_slice;                                             \
-}()
+template <typename T, auto Fn, typename... Args>
+Slice<T> vk_get_slice(Arena* arena, Args... args);
+
+template <auto Fn, typename VecType, typename... Args>
+void vk_get_vec(VecType* vec, Args... args);
 
 }  // namespace

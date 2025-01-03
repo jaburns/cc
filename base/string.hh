@@ -26,6 +26,7 @@ void str_print(Vec<char>* out);
 forall(T, ... Args) void str_print(Vec<char>* out, T value, Args... args);
 forall(... Args) void str_println(Vec<char>* out, Args... args);
 
+#if DEBUG
 void x_log_print();
 forall(T, ... Args) void x_log_print(T value, Args... args);
 #define log(...)                                   \
@@ -34,6 +35,9 @@ forall(T, ... Args) void x_log_print(T value, Args... args);
         x_log_print(__VA_ARGS__);                  \
         printf("\n");                              \
     } while (0)
+#else
+#define log(...)
+#endif
 
 struct Str {
     cchar* elems;

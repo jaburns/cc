@@ -112,9 +112,8 @@ void AudioPlayer::stream_callback(u8* out_stream, i32 out_stream_byte_len) {
 
     for (u32 i = 0; i < length; i += 2) {
         if (clip == NULL || idx >= clip->samples.count) {
-            // f32 val = (f32)rand() / (f32)RAND_MAX;
-            // out[i]     = val * AUDIO_MASTER_VOLUME;
-            // out[i + 1] = val * AUDIO_MASTER_VOLUME;
+            // out[i]     = ((f32)rand() / (f32)RAND_MAX) * AUDIO_MASTER_VOLUME;
+            // out[i + 1] = ((f32)rand() / (f32)RAND_MAX) * AUDIO_MASTER_VOLUME;
             out[i]     = 0.f;
             out[i + 1] = 0.f;
             continue;

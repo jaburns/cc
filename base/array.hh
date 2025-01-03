@@ -27,16 +27,16 @@ forall(T) class ArrayIter {
 };
 
 // -----------------------------------------------------------------------------
-#define Template template <typename T, usize SIZE>
+#define Template template <typename T, usize COUNT>
 
 Template struct Array {
-    static constexpr usize count = SIZE;
+    static constexpr usize count = COUNT;
 
-    T elems[SIZE];
+    T elems[COUNT];
 
     T& operator[](usize index);
 
-    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, SIZE); }
+    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, COUNT); }
     ArrayIter<T> end() { return ArrayIter<T>{}; }
 
     Slice<T> slice();
@@ -92,6 +92,8 @@ forall(T) void print_value(Vec<char>* out, Vec<T>& vec);
 #define Template template <typename T, usize CAPACITY>
 
 Template struct InlineVec {
+    static constexpr usize capacity = CAPACITY;
+
     T     elems[CAPACITY];
     usize count;
 
