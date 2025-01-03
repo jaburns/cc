@@ -99,7 +99,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             create_info.pNext             = nullptr;
         }
 
-        VKCall(vkCreateInstance(&create_info, nullptr, &instance), "Failed to create Vulkan instance");
+        VKExpect(vkCreateInstance(&create_info, nullptr, &instance), "Failed to create Vulkan instance");
         println("Vulkan instance created successfully");
 
         if (!SDL_Vulkan_CreateSurface(sdl_window, instance, &surface)) Panic("Failed to create Vulkan surface: %s\n", SDL_GetError());
@@ -187,7 +187,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             create_info.enabledLayerCount = 0;
         }
 
-        VKCall(vkCreateDevice(physical_device, &create_info, nullptr, &device), "Failed to create logical device");
+        VKExpect(vkCreateDevice(physical_device, &create_info, nullptr, &device), "Failed to create logical device");
 
         vkGetDeviceQueue(device, graphics_queue_idx, 0, &graphics_queue);
         vkGetDeviceQueue(device, present_queue_idx, 0, &present_queue);
@@ -230,7 +230,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .clipped          = VK_TRUE,
             .oldSwapchain     = nullptr,
         };
-        VKCall(vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain), "Failed to create swap chain");
+        VKExpect(vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain), "Failed to create swap chain");
 
         swap_chain_extent       = extent;
         swap_chain_image_format = surface_formats[format_idx].format;
@@ -249,7 +249,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
                 .subresourceRange.baseArrayLayer = 0,
                 .subresourceRange.layerCount     = 1,
             };
-            VKCall(vkCreateImageView(device, &create_info, nullptr, &swap_chain_image_views.elems[i]), "Failed to create image views");
+            VKExpect(vkCreateImageView(device, &create_info, nullptr, &swap_chain_image_views.elems[i]), "Failed to create image views");
         }
     }
     // create render pass
@@ -290,7 +290,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .dependencyCount = 1,
             .pDependencies   = &dependency,
         };
-        VKCall(vkCreateRenderPass(device, &render_pass_info, nullptr, &render_pass), "Failed to create render pass");
+        VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &render_pass), "Failed to create render pass");
     }
     // create graphics pipeline
     {
@@ -302,7 +302,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .codeSize = vert_code.count,
             .pCode    = (u32*)vert_code.elems,
         };
-        VKCall(vkCreateShaderModule(device, &vert_create_info, nullptr, &vert_module), "Failed to create vert shader module");
+        VKExpect(vkCreateShaderModule(device, &vert_create_info, nullptr, &vert_module), "Failed to create vert shader module");
 
         Slice<u8> frag_code   = fs_read_file_bytes(&scratch, "shaders/bin/triangle.fragment.spv");
         auto      frag_module = VkShaderModule{};
@@ -312,7 +312,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .codeSize = frag_code.count,
             .pCode    = (u32*)frag_code.elems,
         };
-        VKCall(vkCreateShaderModule(device, &frag_create_info, nullptr, &frag_module), "Failed to create frag shader module");
+        VKExpect(vkCreateShaderModule(device, &frag_create_info, nullptr, &frag_module), "Failed to create frag shader module");
 
         auto vert_shader_stage_info = VkPipelineShaderStageCreateInfo{
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -390,7 +390,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .pushConstantRangeCount = 0,
             .pPushConstantRanges    = nullptr,
         };
-        VKCall(vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &pipeline_layout), "Failed to create pipeline layout");
+        VKExpect(vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &pipeline_layout), "Failed to create pipeline layout");
 
         auto pipeline_info = VkGraphicsPipelineCreateInfo{
             .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -408,7 +408,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .renderPass          = render_pass,
             .subpass             = 0,
         };
-        VKCall(vkCreateGraphicsPipelines(device, nullptr, 1, &pipeline_info, nullptr, &graphics_pipeline), "Failed to create graphics pipeline");
+        VKExpect(vkCreateGraphicsPipelines(device, nullptr, 1, &pipeline_info, nullptr, &graphics_pipeline), "Failed to create graphics pipeline");
 
         vkDestroyShaderModule(device, frag_module, nullptr);
         vkDestroyShaderModule(device, vert_module, nullptr);
@@ -431,7 +431,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
                 .height          = swap_chain_extent.height,
                 .layers          = 1,
             };
-            VKCall(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &swap_chain_framebuffers[i]), "Failed to create framebuffer");
+            VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &swap_chain_framebuffers[i]), "Failed to create framebuffer");
         }
 
         auto pool_info = VkCommandPoolCreateInfo{
@@ -439,7 +439,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
             .queueFamilyIndex = (u32)graphics_queue_idx,
         };
-        VKCall(vkCreateCommandPool(device, &pool_info, nullptr, &command_pool), "Failed to create command pool");
+        VKExpect(vkCreateCommandPool(device, &pool_info, nullptr, &command_pool), "Failed to create command pool");
 
         auto alloc_info = VkCommandBufferAllocateInfo{
             .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -447,7 +447,7 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             .commandBufferCount = 1,
         };
-        VKCall(vkAllocateCommandBuffers(device, &alloc_info, &command_buffer), "Failed to allocate command buffers");
+        VKExpect(vkAllocateCommandBuffers(device, &alloc_info, &command_buffer), "Failed to allocate command buffers");
     }
     // create sync objects
     {
@@ -458,10 +458,9 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
             .flags = VK_FENCE_CREATE_SIGNALED_BIT,
         };
-        VKCall(vkCreateSemaphore(device, &semaphore_info, nullptr, &image_available_semaphore), "Failed to create semaphore");
-        VKCall(vkCreateSemaphore(device, &semaphore_info, nullptr, &render_finished_semaphore), "Failed to create semaphore");
-        VKCall(vkCreateFence(device, &fence_info, nullptr, &in_flight_fence), "Failed to create fence");
-        wrote = 12345;
+        VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &image_available_semaphore), "Failed to create semaphore");
+        VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &render_finished_semaphore), "Failed to create semaphore");
+        VKExpect(vkCreateFence(device, &fence_info, nullptr, &in_flight_fence), "Failed to create fence");
     }
 
     scratch.destroy();
@@ -498,7 +497,7 @@ void GfxWindow::swap() {
             .flags            = 0,
             .pInheritanceInfo = nullptr,
         };
-        VKCall(vkBeginCommandBuffer(command_buffer, &begin_info), "Failed to begin recording command buffer");
+        VKExpect(vkBeginCommandBuffer(command_buffer, &begin_info), "Failed to begin recording command buffer");
 
         auto clear_color = VkClearValue{{{0.0f, 0.0f, 0.0f, 1.0f}}};
 
@@ -535,7 +534,7 @@ void GfxWindow::swap() {
 
         vkCmdEndRenderPass(command_buffer);
 
-        VKCall(vkEndCommandBuffer(command_buffer), "Failed to record command buffer");
+        VKExpect(vkEndCommandBuffer(command_buffer), "Failed to record command buffer");
     }
 
     VkSemaphore wait_semaphores[] = {
@@ -562,7 +561,7 @@ void GfxWindow::swap() {
         .signalSemaphoreCount = 1,
         .pSignalSemaphores    = signal_semaphores,
     };
-    VKCall(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence), "Failed to submit draw command buffer");
+    VKExpect(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence), "Failed to submit draw command buffer");
 
     auto present_info = VkPresentInfoKHR{
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,

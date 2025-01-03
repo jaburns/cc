@@ -26,18 +26,16 @@ struct GfxWindow {
     VkSemaphore          image_available_semaphore;
     VkSemaphore          render_finished_semaphore;
     VkFence              in_flight_fence;
-    u32                  wrote;
 
     AudioCallbackFn audio_callback_fn;
     AudioPlayer     audio_player;
 
     void init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_callback);
-    void record_command_buffer(VkCommandBuffer commandBuffer, u32 imageIndex);
     bool poll();
     void swap();
 };
 
-#define VKCall(expr, msg)                                               \
+#define VKExpect(expr, msg)                                             \
     do {                                                                \
         VkResult result = (expr);                                       \
         if (result != VK_SUCCESS) Panic("Error %d :: %s", result, msg); \
