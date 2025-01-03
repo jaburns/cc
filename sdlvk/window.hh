@@ -6,16 +6,18 @@ struct GfxWindow {
     static constexpr bool  ENABLE_VALIDATION_LAYERS = true;
     static constexpr usize MAX_FRAMES_IN_FLIGHT     = 2;
 
-    SDL_Window*          sdl_window;
-    VkInstance           instance;
-    VkPhysicalDevice     physical_device;
-    VkDevice             device;
-    VkQueue              graphics_queue;
-    VkQueue              present_queue;
+    SDL_Window*      sdl_window;
+    VkInstance       instance;
+    VkPhysicalDevice physical_device;
+    VkDevice         device;
+    VkQueue          graphics_queue;
+    VkQueue          present_queue;
+
+    VkSurfaceFormatKHR surface_format;
+
     VkSurfaceKHR         surface;
     VkSwapchainKHR       swap_chain;
     VkExtent2D           swap_chain_extent;
-    VkFormat             swap_chain_image_format;
     Slice<VkImage>       swap_chain_images;
     Slice<VkImageView>   swap_chain_image_views;
     Slice<VkFramebuffer> swap_chain_framebuffers;

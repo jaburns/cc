@@ -106,11 +106,12 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
     }
     // create device
     auto surface_capabilities = VkSurfaceCapabilitiesKHR{};
-    auto surface_formats      = Slice<VkSurfaceFormatKHR>{};
     i32  graphics_queue_idx   = -1;
     {
         auto physical_devices = VKGetSlice(vkEnumeratePhysicalDevices, VkPhysicalDevice, &scratch, instance);
         if (physical_devices.count == 0) Panic("Failed to find GPUs with Vulkan support");
+
+        Slice<VkSurfaceFormatKHR> surface_formats = {};
 
         i32 present_queue_idx;
         for (auto& pdevice : physical_devices) {
@@ -191,71 +192,18 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
 
         vkGetDeviceQueue(device, graphics_queue_idx, 0, &graphics_queue);
         vkGetDeviceQueue(device, present_queue_idx, 0, &present_queue);
-    }
-    // create swap chain
-    {
-        VkExtent2D extent = surface_capabilities.currentExtent;
-        if (surface_capabilities.currentExtent.width == UINT32_MAX) {
-            SDL_Vulkan_GetDrawableSize(sdl_window, (i32*)&extent.width, (i32*)&extent.height);
-            extent.width  = clamp(extent.width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
-            extent.height = clamp(extent.height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
-        }
 
-        u32 format_idx = 0;
         for (u32 i = 0; i < surface_formats.count; ++i) {
             if (surface_formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surface_formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-                format_idx = i;
+                surface_format = surface_formats[i];
                 break;
             }
-        }
-
-        u32 image_count = surface_capabilities.minImageCount + 1;
-        if (surface_capabilities.maxImageCount > 0 && image_count > surface_capabilities.maxImageCount) {
-            image_count = surface_capabilities.maxImageCount;
-        }
-
-        auto create_info = VkSwapchainCreateInfoKHR{
-            .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-            .surface          = surface,
-            .minImageCount    = image_count,
-            .imageFormat      = surface_formats[format_idx].format,
-            .imageColorSpace  = surface_formats[format_idx].colorSpace,
-            .imageExtent      = extent,
-            .imageArrayLayers = 1,
-            .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-            .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            .preTransform     = surface_capabilities.currentTransform,
-            .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-            .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
-            .clipped          = VK_TRUE,
-            .oldSwapchain     = nullptr,
-        };
-        VKExpect(vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain), "Failed to create swap chain");
-
-        swap_chain_extent       = extent;
-        swap_chain_image_format = surface_formats[format_idx].format;
-        swap_chain_images       = VKGetSlice(vkGetSwapchainImagesKHR, VkImage, arena, device, swap_chain);
-        swap_chain_image_views  = arena->alloc_many<VkImageView>(swap_chain_images.count);
-
-        for (u32 i = 0; i < swap_chain_images.count; i++) {
-            auto create_info = VkImageViewCreateInfo{
-                .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                .image                           = swap_chain_images[i],
-                .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
-                .format                          = swap_chain_image_format,
-                .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
-                .subresourceRange.baseMipLevel   = 0,
-                .subresourceRange.levelCount     = 1,
-                .subresourceRange.baseArrayLayer = 0,
-                .subresourceRange.layerCount     = 1,
-            };
-            VKExpect(vkCreateImageView(device, &create_info, nullptr, &swap_chain_image_views.elems[i]), "Failed to create image views");
         }
     }
     // create render pass
     {
         auto color_attachment = VkAttachmentDescription{
-            .format         = swap_chain_image_format,
+            .format         = surface_format.format,
             .samples        = VK_SAMPLE_COUNT_1_BIT,
             .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
@@ -291,6 +239,76 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .pDependencies   = &dependency,
         };
         VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &render_pass), "Failed to create render pass");
+    }
+    // create swap chain
+    {
+        VkExtent2D extent = surface_capabilities.currentExtent;
+        if (surface_capabilities.currentExtent.width == UINT32_MAX) {
+            SDL_Vulkan_GetDrawableSize(sdl_window, (i32*)&extent.width, (i32*)&extent.height);
+            extent.width  = clamp(extent.width, surface_capabilities.minImageExtent.width, surface_capabilities.maxImageExtent.width);
+            extent.height = clamp(extent.height, surface_capabilities.minImageExtent.height, surface_capabilities.maxImageExtent.height);
+        }
+
+        u32 image_count = surface_capabilities.minImageCount + 1;
+        if (surface_capabilities.maxImageCount > 0 && image_count > surface_capabilities.maxImageCount) {
+            image_count = surface_capabilities.maxImageCount;
+        }
+
+        auto create_info = VkSwapchainCreateInfoKHR{
+            .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            .surface          = surface,
+            .minImageCount    = image_count,
+            .imageFormat      = surface_format.format,
+            .imageColorSpace  = surface_format.colorSpace,
+            .imageExtent      = extent,
+            .imageArrayLayers = 1,
+            .imageUsage       = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .preTransform     = surface_capabilities.currentTransform,
+            .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            .presentMode      = VK_PRESENT_MODE_FIFO_KHR,
+            .clipped          = VK_TRUE,
+            .oldSwapchain     = nullptr,
+        };
+        VKExpect(vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain), "Failed to create swap chain");
+
+        swap_chain_extent      = extent;
+        swap_chain_images      = VKGetSlice(vkGetSwapchainImagesKHR, VkImage, arena, device, swap_chain);
+        swap_chain_image_views = arena->alloc_many<VkImageView>(swap_chain_images.count);
+
+        for (u32 i = 0; i < swap_chain_images.count; i++) {
+            auto create_info = VkImageViewCreateInfo{
+                .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                .image                           = swap_chain_images[i],
+                .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
+                .format                          = surface_format.format,
+                .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+                .subresourceRange.baseMipLevel   = 0,
+                .subresourceRange.levelCount     = 1,
+                .subresourceRange.baseArrayLayer = 0,
+                .subresourceRange.layerCount     = 1,
+            };
+            VKExpect(vkCreateImageView(device, &create_info, nullptr, &swap_chain_image_views.elems[i]), "Failed to create image views");
+        }
+
+        swap_chain_framebuffers = arena->alloc_many<VkFramebuffer>(swap_chain_image_views.count);
+
+        for (u32 i = 0; i < swap_chain_image_views.count; i++) {
+            VkImageView attachments[] = {
+                swap_chain_image_views.elems[i]
+            };
+
+            auto framebuffer_info = VkFramebufferCreateInfo{
+                .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+                .renderPass      = render_pass,
+                .attachmentCount = 1,
+                .pAttachments    = attachments,
+                .width           = swap_chain_extent.width,
+                .height          = swap_chain_extent.height,
+                .layers          = 1,
+            };
+            VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &swap_chain_framebuffers[i]), "Failed to create framebuffer");
+        }
     }
     // create graphics pipeline
     {
@@ -415,25 +433,6 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
     }
     // create framebuffers and command buffer
     {
-        swap_chain_framebuffers = arena->alloc_many<VkFramebuffer>(swap_chain_image_views.count);
-
-        for (u32 i = 0; i < swap_chain_image_views.count; i++) {
-            VkImageView attachments[] = {
-                swap_chain_image_views.elems[i]
-            };
-
-            auto framebuffer_info = VkFramebufferCreateInfo{
-                .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-                .renderPass      = render_pass,
-                .attachmentCount = 1,
-                .pAttachments    = attachments,
-                .width           = swap_chain_extent.width,
-                .height          = swap_chain_extent.height,
-                .layers          = 1,
-            };
-            VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &swap_chain_framebuffers[i]), "Failed to create framebuffer");
-        }
-
         auto pool_info = VkCommandPoolCreateInfo{
             .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
