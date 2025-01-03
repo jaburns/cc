@@ -8,5 +8,6 @@
 #include "math.cc"
 #include "hasharray.cc"
 #include "channel.cc"
+#include "fs.cc"
 #include "xml.cc"
 #include "test.cc"

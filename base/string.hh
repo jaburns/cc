@@ -39,7 +39,6 @@ struct Str {
     cchar* elems;
     usize  count;
 
-    static Str from_file(cchar* filename);
     static Str from_ptr(cchar* elems, usize count);
     static Str from_cstr(cchar* cstr);
     char*      to_cstr(Arena* arena);

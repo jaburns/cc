@@ -6,6 +6,27 @@ class Arena;
 forall(T) struct Slice;
 
 // -----------------------------------------------------------------------------
+
+forall(T) class ArrayIter {
+  private:
+    T*    elems = {};
+    usize count = {};
+    usize idx   = {};
+
+  public:
+    T&         operator*() { return elems[idx]; }
+    bool       operator!=(ArrayIter& other) { return idx < count; }
+    ArrayIter& operator++() { return idx++, *this; }
+
+    static ArrayIter start(T* elems, usize count) {
+        ArrayIter ret = {};
+        ret.elems     = elems;
+        ret.count     = count;
+        return ret;
+    }
+};
+
+// -----------------------------------------------------------------------------
 #define Template template <typename T, usize SIZE>
 
 Template struct Array {
@@ -14,6 +35,9 @@ Template struct Array {
     T elems[SIZE];
 
     T& operator[](usize index);
+
+    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, SIZE); }
+    ArrayIter<T> end() { return ArrayIter<T>{}; }
 
     Slice<T> slice();
 };
@@ -34,11 +58,12 @@ forall(T) struct Slice {
     forall(U) bool contains_all(Slice<U> search, bool (*compare)(T* a, U* b));
 
     T& operator[](usize index);
+
+    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, count); }
+    ArrayIter<T> end() { return ArrayIter<T>{}; }
 };
 
 #define Slice(v0, ...) (Slice<decltype(v0)>::from_ptr((decltype(v0)[]){v0, __VA_ARGS__}, sizeof((decltype(v0)[]){v0, __VA_ARGS__}) / sizeof(decltype(v0))))
-
-// TODO(jaburns) foreach iterator for array/slice/vec/inlinevec
 
 // -----------------------------------------------------------------------------
 
@@ -51,6 +76,9 @@ forall(T) struct Vec {
     static Vec from_ptr(T* ptr, usize capacity);
 
     T& operator[](usize index);
+
+    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, count); }
+    ArrayIter<T> end() { return ArrayIter<T>{}; }
 
     Slice<T> slice();
     T*       push();
@@ -68,6 +96,9 @@ Template struct InlineVec {
     usize count;
 
     T& operator[](usize index);
+
+    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, count); }
+    ArrayIter<T> end() { return ArrayIter<T>{}; }
 
     Slice<T> slice();
     T*       push();

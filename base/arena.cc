@@ -55,6 +55,12 @@ forall(T) T* Arena::alloc_one() {
     return (T*)memset(ret, 0, size);
 }
 
+void Arena::align() {
+    constexpr usize MAX_ALIGN = 64;
+
+    cur = (u8*)(((usize)cur + (MAX_ALIGN - 1)) & ~(MAX_ALIGN - 1));
+}
+
 forall(T) Slice<T> Arena::alloc_many(usize count) {
     if (count == 0) return Slice<T>{};
 

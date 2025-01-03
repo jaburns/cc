@@ -58,8 +58,6 @@ forall(T) void This::next() {
     idx = wrapped_add(idx, 1);
     if (idx >= count) {
         done = true;
-    } else {
-        entry.item = &buffer[idx];
     }
 }
 

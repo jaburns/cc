@@ -26,20 +26,16 @@ forall(T) class Channel {
 };
 
 forall(T) class ChannelIter {
-  public:
-    struct Entry {
-        T* item;
-    };
-
-  private:
-    u32   count  = {};
-    u32   idx    = {};
-    T*    buffer = {};
-    Entry entry  = {};
-    bool  done   = {};
+    u32  count  = {};
+    u32  idx    = {};
+    T*   buffer = {};
+    bool done   = {};
 
   public:
-    DefIteratorOperators(ChannelIter);
+    T&           operator*() { return buffer[idx]; }
+    bool         operator!=(ChannelIter& other) { return !done; }
+    ChannelIter& operator++() { return next(), *this; }
+
     static ChannelIter start(Channel<T>* chan);
     void               next();
 };

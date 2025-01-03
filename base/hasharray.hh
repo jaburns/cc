@@ -52,7 +52,10 @@ forall(K, V) class HashArrayIter {
     bool             done   = {};
 
   public:
-    DefIteratorOperators(HashArrayIter);
+    Entry          operator*() { return entry; }
+    bool           operator!=(HashArrayIter& other) { return !done; }
+    HashArrayIter& operator++() { return next(), *this; }
+
     static HashArrayIter start(HashArray<K, V>* map);
     void                 next();
 };

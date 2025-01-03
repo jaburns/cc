@@ -33,5 +33,6 @@
 #include "math.hh"
 #include "hasharray.hh"
 #include "channel.hh"
+#include "fs.hh"
 #include "xml.hh"
 #include "test.hh"

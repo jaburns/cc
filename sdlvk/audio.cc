@@ -94,10 +94,10 @@ AudioPlayer AudioPlayer::alloc(Arena* arena) {
 }
 
 void AudioPlayer::stream_callback(u8* out_stream, i32 out_stream_byte_len) {
-    for (auto msg : msg_chan) {
-        switch (msg.item->tag) {
+    for (auto& msg : msg_chan) {
+        switch (msg.tag) {
             case AudioPlayerMsg::Tag::Play: {
-                clip = msg.item->as_play.clip;
+                clip = msg.as_play.clip;
                 idx  = 0;
                 break;
             }
@@ -112,7 +112,7 @@ void AudioPlayer::stream_callback(u8* out_stream, i32 out_stream_byte_len) {
 
     for (u32 i = 0; i < length; i += 2) {
         if (clip == NULL || idx >= clip->samples.count) {
-            f32 val = (f32)rand() / (f32)RAND_MAX;
+            // f32 val = (f32)rand() / (f32)RAND_MAX;
             // out[i]     = val * AUDIO_MASTER_VOLUME;
             // out[i + 1] = val * AUDIO_MASTER_VOLUME;
             out[i]     = 0.f;

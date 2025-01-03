@@ -26,6 +26,7 @@ class Arena {
     ArenaMark mark();
     void      restore(ArenaMark saved);
     void      clear();
+    void      align();
 
     forall(T) T* alloc_one();
     forall(T) Slice<T> alloc_many(usize count);

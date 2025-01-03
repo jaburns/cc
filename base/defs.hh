@@ -109,14 +109,6 @@ struct NoCopy {
     NoCopy& operator=(NoCopy&&)      = delete;
 };
 
-#define DefIteratorOperators(T)                        \
-    Entry operator*() { return this->entry; }          \
-    bool  operator!=(T& other) { return !this->done; } \
-    T&    operator++() {                               \
-        this->next();                               \
-        return *this;                               \
-    }
-
 forall(T) struct AtomicVal {
     T unsafe_inner;
     static_assert(std::atomic<T>::is_always_lock_free);
