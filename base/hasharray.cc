@@ -3,7 +3,7 @@ namespace {
 // --------------------------------------------------------------------------------------------------------------------
 #define This HashArray<K, V>
 
-forall(K, V) This* This::construct(Arena* arena, usize capacity, usize max_elems) {
+forall(K, V) This* This::construct(Arena* arena, u32 capacity, u32 max_elems) {
     u32*       hashes     = arena->alloc_many<u32>(capacity).elems;
     K*         keys       = arena->alloc_many<K>(capacity).elems;
     V*         values     = arena->alloc_many<V>(capacity).elems;
@@ -22,18 +22,18 @@ forall(K, V) This* This::construct(Arena* arena, usize capacity, usize max_elems
     return map;
 }
 
-forall(K, V) This* This::alloc_with_cap(Arena* arena, usize capacity) {
-    capacity        = next_power_of_2(capacity);
-    usize max_elems = capacity * HASHARRAY_LOAD_FACTOR_PERCENT / 100;
+forall(K, V) This* This::alloc_with_cap(Arena* arena, u32 capacity) {
+    capacity      = next_power_of_2(capacity);
+    u32 max_elems = capacity * LOAD_FACTOR_PERCENT / 100;
     return This::construct(arena, capacity, max_elems);
 }
 
-forall(K, V) This* This::alloc_with_elems(Arena* arena, usize max_elems) {
-    usize capacity = next_power_of_2(max_elems * 100 / HASHARRAY_LOAD_FACTOR_PERCENT);
+forall(K, V) This* This::alloc_with_elems(Arena* arena, u32 max_elems) {
+    u32 capacity = next_power_of_2(max_elems * 100 / LOAD_FACTOR_PERCENT);
     return This::construct(arena, capacity, max_elems);
 }
 
-no_sanitize_overflow u32 hasharray_murmur3_32_hash(u8* bytes, usize len) {
+no_sanitize_overflow u32 hasharray_murmur3_32_hash(u8* bytes, u32 len) {
     i32 nblocks = len / 4;
     u32 h1      = 0x87C263D1;  // seed
 
@@ -196,9 +196,10 @@ forall(K, V) void This::clear() {
 #define This HashArrayIter<K, V>
 
 forall(K, V) This This::start(HashArray<K, V>* map) {
-    This ret   = {};
-    ret.idx    = -1;
-    ret.target = map;
+    This ret = {
+        .idx    = -1,
+        .target = map,
+    };
     ret.next();
     return ret;
 }

@@ -1,12 +1,12 @@
 #include "inc.hh"
 namespace {
 
+// -----------------------------------------------------------------------------
 #define This Channel<T>
 
 forall(T) This This::alloc(Arena* arena, usize capacity) {
-    T* buffers = arena->alloc_many<T>(2 * capacity).elems;
-
-    This ret      = {};
+    T*   buffers = arena->alloc_many<T>(2 * capacity).elems;
+    This ret{};
     ret.capacity  = capacity;
     ret.buffer[0] = buffers;
     ret.buffer[1] = buffers + capacity;
@@ -46,11 +46,13 @@ forall(T) This This::start(Channel<T>* chan) {
 
     *chan->count_commit[prev_buf] = 0;
 
-    ChannelIter it = {};
-    it.count       = prev_reserved_idx,
-    it.idx         = -1,
-    it.buffer      = chan->buffer[prev_buf],
+    This it{};
+    it.count  = prev_reserved_idx;
+    it.idx    = -1;
+    it.buffer = chan->buffer[prev_buf];
+
     it.next();
+
     return it;
 }
 
@@ -62,7 +64,7 @@ forall(T) void This::next() {
 }
 
 #undef This
-
+// -----------------------------------------------------------------------------
 #if TEST
 
 #define THREAD_COUNT 32
@@ -146,5 +148,5 @@ void test_channel(void) {
 #undef THREAD_COUNT
 #undef NUM_ITEMS
 #endif
-
+// -----------------------------------------------------------------------------
 }  // namespace

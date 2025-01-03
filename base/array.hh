@@ -1,6 +1,7 @@
 #pragma once
 #include "inc.hh"
 namespace {
+// -----------------------------------------------------------------------------
 
 class Arena;
 forall(T) struct Slice;

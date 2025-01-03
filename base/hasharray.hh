@@ -2,11 +2,11 @@
 #include "inc.hh"
 namespace {
 
-#define HASHARRAY_LOAD_FACTOR_PERCENT 70
-
 forall(K, V) class HashArrayIter;
 
 forall(K, V) class HashArray {
+    static constexpr u32 LOAD_FACTOR_PERCENT = 70;
+
     friend class HashArrayIter<K, V>;
 
     u32* hashes     = {};
@@ -15,12 +15,12 @@ forall(K, V) class HashArray {
     V*   value_stub = {};
 
   public:
-    usize capacity  = {};
-    usize max_elems = {};
-    usize count     = {};
+    u32 capacity  = {};
+    u32 max_elems = {};
+    u32 count     = {};
 
-    static HashArray* alloc_with_cap(Arena* arena, usize capacity);
-    static HashArray* alloc_with_elems(Arena* arena, usize max_elems);
+    static HashArray* alloc_with_cap(Arena* arena, u32 capacity);
+    static HashArray* alloc_with_elems(Arena* arena, u32 max_elems);
 
     V*   insert(K* key);
     V*   maybe_get(K* key);
@@ -33,7 +33,7 @@ forall(K, V) class HashArray {
     HashArrayIter<K, V> end() { return HashArrayIter<K, V>{}; }
 
   private:
-    static HashArray* construct(Arena* arena, usize capacity, usize max_elems);
+    static HashArray* construct(Arena* arena, u32 capacity, u32 max_elems);
 
     u32 find_idx(K* key);
 };
@@ -46,7 +46,7 @@ forall(K, V) class HashArrayIter {
     };
 
   private:
-    usize            idx    = {};
+    u32              idx    = {};
     HashArray<K, V>* target = {};
     Entry            entry  = {};
     bool             done   = {};

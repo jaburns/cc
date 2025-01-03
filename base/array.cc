@@ -1,6 +1,6 @@
 #include "inc.hh"
 namespace {
-// --------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 #define Template template <typename T, usize COUNT>
 #define This     Array<T, COUNT>
 
@@ -15,14 +15,14 @@ Template Slice<T> This::slice() {
 
 #undef Template
 #undef This
-// --------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 #define This Slice<T>
 
 forall(T) This This::from_ptr(T* elems, usize count) {
-    Slice<T> ret = {};
-    ret.elems    = elems;
-    ret.count    = count;
-    return ret;
+    return {
+        .elems = elems,
+        .count = count,
+    };
 }
 
 forall(T) T& This::operator[](usize index) {
@@ -52,21 +52,21 @@ forall(T) void print_value(Vec<char>* out, Slice<T>& slice) {
 }
 
 #undef This
-// --------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 #define This Vec<T>
 
 forall(T) This This::alloc(Arena* arena, usize capacity) {
-    This ret     = {};
-    ret.elems    = arena->alloc_many<T>(capacity).elems;
-    ret.capacity = capacity;
-    return ret;
+    return {
+        .elems    = arena->alloc_many<T>(capacity).elems,
+        .capacity = capacity,
+    };
 }
 
 forall(T) This This::from_ptr(T* ptr, usize capacity) {
-    This ret     = {};
-    ret.elems    = ptr;
-    ret.capacity = capacity;
-    return ret;
+    return {
+        .elems    = ptr,
+        .capacity = capacity,
+    };
 }
 
 forall(T) T& This::operator[](usize index) {
@@ -94,7 +94,7 @@ forall(T) void print_value(Vec<char>* out, This& vec) {
 }
 
 #undef This
-// --------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 #define Template template <typename T, usize CAPACITY>
 #define This     InlineVec<T, CAPACITY>
 
@@ -124,5 +124,5 @@ Template void print_value(Vec<char>* out, This& vec) {
 
 #undef Template
 #undef This
-// --------------------------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 }  // namespace

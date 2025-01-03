@@ -77,14 +77,13 @@ typedef size_t    usize;
 #define ZeroStruct(struct_ptr)      (decltype(struct_ptr))memset((struct_ptr), 0, sizeof(*(struct_ptr)))
 #define ZeroArray(array_ptr, count) memset((array_ptr), 0, (count) * sizeof((array_ptr)[0]))
 
+#define X_forall_dispatch(_1, _2, _3, _4, name, ...) \
+    name
 #define X_forall_1(t1)             template <typename t1>
 #define X_forall_2(t1, t2)         template <typename t1, typename t2>
 #define X_forall_3(t1, t2, t3)     template <typename t1, typename t2, typename t3>
 #define X_forall_4(t1, t2, t3, t4) template <typename t1, typename t2, typename t3, typename t4>
-
-#define X_forall_dispatch(_1, _2, _3, _4, name, ...) name
-
-#define forall(...) X_forall_dispatch(__VA_ARGS__, X_forall_4, X_forall_3, X_forall_2, X_forall_1)(__VA_ARGS__)
+#define forall(...)                X_forall_dispatch(__VA_ARGS__, X_forall_4, X_forall_3, X_forall_2, X_forall_1)(__VA_ARGS__)
 
 #if defined(__has_attribute)
 #if __has_attribute(no_sanitize)

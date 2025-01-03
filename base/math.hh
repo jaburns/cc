@@ -1,6 +1,7 @@
 #pragma once
 #include "inc.hh"
 namespace {
+// -----------------------------------------------------------------------------
 
 struct vec2;
 struct vec3;

@@ -1,7 +1,10 @@
 #include "inc.hh"
 namespace {
+// -----------------------------------------------------------------------------
 
 global thread_local Arena g_arena_scratch[2];
+
+// -----------------------------------------------------------------------------
 
 Arena Arena::create(MemoryAllocator allocator, usize block_size) {
     MemoryReservation reservation = allocator.memory_reserve(block_size);
@@ -88,6 +91,8 @@ forall(T) T* Arena::alloc_resource(void (*drop)(T*)) {
     return result;
 }
 
+// -----------------------------------------------------------------------------
+
 void arena_scratch_thread_local_create(MemoryAllocator allocator, usize block_size) {
     g_arena_scratch[0] = Arena::create(allocator, block_size);
     g_arena_scratch[1] = Arena::create(allocator, block_size);
@@ -127,4 +132,5 @@ ScratchArena::~ScratchArena() {
     arena->restore(mark);
 }
 
+// -----------------------------------------------------------------------------
 }  // namespace
