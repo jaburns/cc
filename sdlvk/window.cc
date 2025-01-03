@@ -445,9 +445,9 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .commandPool        = command_pool,
             .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-            .commandBufferCount = 1,
+            .commandBufferCount = 2,
         };
-        VKExpect(vkAllocateCommandBuffers(device, &alloc_info, &command_buffer), "Failed to allocate command buffers");
+        VKExpect(vkAllocateCommandBuffers(device, &alloc_info, command_buffers.elems), "Failed to allocate command buffers");
     }
     // create sync objects
     {
@@ -458,9 +458,11 @@ void GfxWindow::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_au
             .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
             .flags = VK_FENCE_CREATE_SIGNALED_BIT,
         };
-        VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &image_available_semaphore), "Failed to create semaphore");
-        VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &render_finished_semaphore), "Failed to create semaphore");
-        VKExpect(vkCreateFence(device, &fence_info, nullptr, &in_flight_fence), "Failed to create fence");
+        for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &image_available_semaphores[i]), "Failed to create semaphore");
+            VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &render_finished_semaphores[i]), "Failed to create semaphore");
+            VKExpect(vkCreateFence(device, &fence_info, nullptr, &in_flight_fences[i]), "Failed to create fence");
+        }
     }
 
     scratch.destroy();
@@ -484,14 +486,16 @@ bool GfxWindow::poll() {
 }
 
 void GfxWindow::swap() {
-    vkWaitForFences(device, 1, &in_flight_fence, VK_TRUE, UINT64_MAX);
-    vkResetFences(device, 1, &in_flight_fence);
+    vkWaitForFences(device, 1, &in_flight_fences[cur_framebuffer_idx], VK_TRUE, UINT64_MAX);
+    vkResetFences(device, 1, &in_flight_fences[cur_framebuffer_idx]);
 
     u32 image_index;
-    vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, image_available_semaphore, nullptr, &image_index);
-    vkResetCommandBuffer(command_buffer, 0);
+    vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, image_available_semaphores[cur_framebuffer_idx], nullptr, &image_index);
+    vkResetCommandBuffer(command_buffers[cur_framebuffer_idx], 0);
 
     {
+        auto& command_buffer = command_buffers[cur_framebuffer_idx];
+
         auto begin_info = VkCommandBufferBeginInfo{
             .sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             .flags            = 0,
@@ -538,14 +542,14 @@ void GfxWindow::swap() {
     }
 
     VkSemaphore wait_semaphores[] = {
-        image_available_semaphore
+        image_available_semaphores[cur_framebuffer_idx],
     };
     // wait until image available before running the color-attachment-output stage
     VkPipelineStageFlags wait_stages[] = {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
     };
     VkSemaphore signal_semaphores[] = {
-        render_finished_semaphore,
+        render_finished_semaphores[cur_framebuffer_idx],
     };
     VkSwapchainKHR swap_chains[] = {
         swap_chain,
@@ -557,11 +561,11 @@ void GfxWindow::swap() {
         .pWaitSemaphores      = wait_semaphores,
         .pWaitDstStageMask    = wait_stages,
         .commandBufferCount   = 1,
-        .pCommandBuffers      = &command_buffer,
+        .pCommandBuffers      = &command_buffers[cur_framebuffer_idx],
         .signalSemaphoreCount = 1,
         .pSignalSemaphores    = signal_semaphores,
     };
-    VKExpect(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence), "Failed to submit draw command buffer");
+    VKExpect(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fences[cur_framebuffer_idx]), "Failed to submit draw command buffer");
 
     auto present_info = VkPresentInfoKHR{
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
@@ -573,6 +577,8 @@ void GfxWindow::swap() {
     };
 
     vkQueuePresentKHR(present_queue, &present_info);
+
+    cur_framebuffer_idx = (cur_framebuffer_idx + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 }  // namespace

@@ -3,7 +3,8 @@
 namespace {
 
 struct GfxWindow {
-    static constexpr bool ENABLE_VALIDATION_LAYERS = true;
+    static constexpr bool  ENABLE_VALIDATION_LAYERS = true;
+    static constexpr usize MAX_FRAMES_IN_FLIGHT     = 2;
 
     SDL_Window*          sdl_window;
     VkInstance           instance;
@@ -22,10 +23,12 @@ struct GfxWindow {
     VkPipelineLayout     pipeline_layout;
     VkPipeline           graphics_pipeline;
     VkCommandPool        command_pool;
-    VkCommandBuffer      command_buffer;
-    VkSemaphore          image_available_semaphore;
-    VkSemaphore          render_finished_semaphore;
-    VkFence              in_flight_fence;
+    u32                  cur_framebuffer_idx;
+
+    Array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> command_buffers;
+    Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     image_available_semaphores;
+    Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     render_finished_semaphores;
+    Array<VkFence, MAX_FRAMES_IN_FLIGHT>         in_flight_fences;
 
     AudioCallbackFn audio_callback_fn;
     AudioPlayer     audio_player;
