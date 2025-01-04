@@ -1,112 +1,6 @@
 #include "inc.hh"
 namespace {
-
-VKAPI_ATTR VkBool32 VKAPI_CALL gfx_vulkan_debug_callback(
-    VkDebugUtilsMessageSeverityFlagBitsEXT      message_severity,
-    VkDebugUtilsMessageTypeFlagsEXT             message_type,
-    const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
-    void*                                       user_data
-) {
-    println("Vulkan validation layer: ", callback_data->pMessage);
-    return VK_FALSE;
-}
-
-template <typename T, auto Fn, typename... Args>
-Slice<T> vk_get_slice(Arena* arena, Args... args) {
-    u32 count = 0;
-    Fn(args..., &count, nullptr);
-    if (count == 0) return {};
-    Slice<T> ret_slice = arena->alloc_many<T>(count);
-    Fn(args..., &count, ret_slice.elems);
-    return ret_slice;
-}
-
-template <auto Fn, typename VecType, typename... Args>
-void vk_get_vec(VecType* vec, Args... args) {
-    u32 count = 0;
-    Fn(args..., &count, nullptr);
-    if (count == 0) {
-        vec->count = 0;
-        return;
-    }
-    if (count > vec->capacity) {
-        Panic("Results from vk_get_into_vec would extend beyond the capacity of the target vec");
-    }
-    Fn(args..., &count, vec->elems);
-    vec->count = count;
-}
-
-u32 vk_find_memory_type(VkPhysicalDevice physical_device, u32 type_filter, VkMemoryPropertyFlags properties) {
-    VkPhysicalDeviceMemoryProperties mem_properties;
-    vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
-
-    for (u32 i = 0; i < mem_properties.memoryTypeCount; i++) {
-        if ((type_filter & (1 << i)) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-    Panic("vk_find_memory_type failed to find anything");
-}
-
-void vk_create_buffer(
-    VkDevice device, VkPhysicalDevice physical_device, VkDeviceSize size,
-    VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
-    VkBuffer* buffer, VkDeviceMemory* buffer_memory
-) {
-    auto vertex_buffer_info = VkBufferCreateInfo{
-        .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size        = size,  // sizeof(Vertex) * vertices.count,
-        .usage       = usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-    };
-    VKExpect(vkCreateBuffer(device, &vertex_buffer_info, nullptr, buffer));
-
-    VkMemoryRequirements mem_requirements;
-    vkGetBufferMemoryRequirements(device, *buffer, &mem_requirements);
-
-    auto vertex_alloc_info = VkMemoryAllocateInfo{
-        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .allocationSize  = mem_requirements.size,
-        .memoryTypeIndex = vk_find_memory_type(physical_device, mem_requirements.memoryTypeBits, properties),
-    };
-    VKExpect(vkAllocateMemory(device, &vertex_alloc_info, nullptr, buffer_memory));
-
-    vkBindBufferMemory(device, *buffer, *buffer_memory, 0);
-}
-
-void vk_copy_buffer(VkDevice device, VkQueue queue, VkCommandPool command_pool, VkBuffer dest, VkBuffer src, VkDeviceSize size) {
-    auto allocInfo = VkCommandBufferAllocateInfo{
-        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandPool        = command_pool,
-        .commandBufferCount = 1,
-    };
-
-    VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
-    VkBufferCopy copyRegion{};
-    copyRegion.size = size;
-    vkCmdCopyBuffer(commandBuffer, src, dest, 1, &copyRegion);
-
-    vkEndCommandBuffer(commandBuffer);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers    = &commandBuffer;
-
-    vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(queue);
-
-    vkFreeCommandBuffers(device, command_pool, 1, &commandBuffer);
-}
+// -----------------------------------------------------------------------------
 
 void GfxWindow::create_swap_chain() {
     log("creating swap chain");
@@ -212,11 +106,23 @@ void GfxWindow::create_swap_chain() {
     }
 }
 
+// -----------------------------------------------------------------------------
+
+VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT      message_severity,
+    VkDebugUtilsMessageTypeFlagsEXT             message_type,
+    const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
+    void*                                       user_data
+) {
+    println("Vulkan validation layer: ", callback_data->pMessage);
+    return VK_FALSE;
+}
+
+// -----------------------------------------------------------------------------
+
 void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
     ZeroStruct(this);
     auto scratch = Arena::create(memory_get_global_allocator(), 0);
-
-    app = (GfxApp*)memory_get_global_allocator().memory_heap_alloc(sizeof(GfxApp));
 
     auto validation_layers = Array(
         (cchar*)"VK_LAYER_KHRONOS_validation"
@@ -317,7 +223,7 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
                 .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
                                VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
                                VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-                .pfnUserCallback = gfx_vulkan_debug_callback,
+                .pfnUserCallback = vk_debug_callback,
             };
             create_info.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debug_create_info;
         } else {
@@ -463,6 +369,7 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
         };
         VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &main_pass));
     }
+    // imgui render pass
     {
         VkAttachmentDescription color_attachment{
             .format         = surface_format.format,
@@ -504,7 +411,6 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
 
         VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &imgui_render_pass));
     }
-
     {
         auto pool_info = VkCommandPoolCreateInfo{
             .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -582,10 +488,10 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
 
     create_swap_chain();
 
-    app->init(device, physical_device, surface_format, graphics_queue, command_pool, main_pass);
-
     scratch.destroy();
 }
+
+// -----------------------------------------------------------------------------
 
 bool GfxWindow::poll() {
     mouse_delta       = IVEC2_ZERO;
@@ -694,7 +600,9 @@ quit:
     return false;
 }
 
-void GfxWindow::swap() {
+// -----------------------------------------------------------------------------
+
+GfxFrameContext GfxWindow::begin_frame() {
 top:
     vkWaitForFences(device, 1, &in_flight_fences[cur_framebuffer_idx], VK_TRUE, UINT64_MAX);
 
@@ -731,41 +639,42 @@ top:
 
     vkResetFences(device, 1, &in_flight_fences[cur_framebuffer_idx]);
 
+    auto& buffer = command_buffers[cur_framebuffer_idx];
+    vkResetCommandBuffer(buffer, 0);
+
+    auto begin_info = VkCommandBufferBeginInfo{
+        .sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags            = 0,
+        .pInheritanceInfo = nullptr,
+    };
+    VKExpect(vkBeginCommandBuffer(buffer, &begin_info));
+
+    return GfxFrameContext{
+        .buffer                = buffer,
+        .main_pass             = main_pass,
+        .main_pass_framebuffer = main_pass_framebuffers[image_index],
+        .main_pass_extent      = swap_chain_extent,
+        .image_index           = image_index,
+    };
+}
+
+void GfxWindow::end_frame(GfxFrameContext ctx) {
 #if EDITOR
     ImGui::Render();
+
+    auto imgui_rp_begin = VkRenderPassBeginInfo{
+        .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass      = imgui_render_pass,
+        .framebuffer     = imgui_framebuffers[ctx.image_index],
+        .renderArea      = {{0, 0}, swap_chain_extent},
+        .clearValueCount = 0,
+        .pClearValues    = nullptr,
+    };
+    vkCmdBeginRenderPass(ctx.buffer, &imgui_rp_begin, VK_SUBPASS_CONTENTS_INLINE);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ctx.buffer);
+    vkCmdEndRenderPass(ctx.buffer);
 #endif
-
-    {
-        auto& buffer = command_buffers[cur_framebuffer_idx];
-        vkResetCommandBuffer(buffer, 0);
-
-        auto begin_info = VkCommandBufferBeginInfo{
-            .sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            .flags            = 0,
-            .pInheritanceInfo = nullptr,
-        };
-        VKExpect(vkBeginCommandBuffer(buffer, &begin_info));
-
-        app->frame(buffer, main_pass, main_pass_framebuffers[image_index], swap_chain_extent);
-
-#if EDITOR
-        {
-            auto imgui_rp_begin = VkRenderPassBeginInfo{
-                .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-                .renderPass      = imgui_render_pass,
-                .framebuffer     = imgui_framebuffers[image_index],
-                .renderArea      = {{0, 0}, swap_chain_extent},
-                .clearValueCount = 0,
-                .pClearValues    = nullptr,
-            };
-            vkCmdBeginRenderPass(buffer, &imgui_rp_begin, VK_SUBPASS_CONTENTS_INLINE);
-            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buffer);
-            vkCmdEndRenderPass(buffer);
-        }
-#endif
-
-        VKExpect(vkEndCommandBuffer(buffer));
-    }
+    VKExpect(vkEndCommandBuffer(ctx.buffer));
 
     VkPipelineStageFlags wait_stages[] = {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
@@ -788,10 +697,10 @@ top:
         .pWaitSemaphores    = &render_finished_semaphores[cur_framebuffer_idx],
         .swapchainCount     = 1,
         .pSwapchains        = &swap_chain,
-        .pImageIndices      = &image_index,
+        .pImageIndices      = &ctx.image_index,
     };
 
-    result = vkQueuePresentKHR(present_queue, &present_info);
+    VkResult result = vkQueuePresentKHR(present_queue, &present_info);
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebuffer_resized) {
         log("vkQueuePresentKHR result: ", result);
         framebuffer_resized = false;
@@ -803,4 +712,105 @@ top:
     cur_framebuffer_idx = (cur_framebuffer_idx + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
+// -----------------------------------------------------------------------------
+
+void GfxWindow::vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* out_buffer, VkDeviceMemory* out_buffer_memory) {
+    auto create_info = VkBufferCreateInfo{
+        .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size        = size,  // sizeof(Vertex) * vertices.count,
+        .usage       = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    VKExpect(vkCreateBuffer(device, &create_info, nullptr, out_buffer));
+
+    VkMemoryRequirements mem_requirements;
+    vkGetBufferMemoryRequirements(device, *out_buffer, &mem_requirements);
+
+    u32 mem_type_idx = -1;
+
+    VkPhysicalDeviceMemoryProperties mem_properties;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
+
+    for (u32 i = 0; i < mem_properties.memoryTypeCount; i++) {
+        if ((mem_requirements.memoryTypeBits & (1 << i)) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+            mem_type_idx = i;
+            break;
+        }
+    }
+
+    if (mem_type_idx == -1) {
+        Panic("Failed to find memory type");
+    }
+
+    auto alloc_info = VkMemoryAllocateInfo{
+        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize  = mem_requirements.size,
+        .memoryTypeIndex = mem_type_idx,
+    };
+
+    VKExpect(vkAllocateMemory(device, &alloc_info, nullptr, out_buffer_memory));
+
+    vkBindBufferMemory(device, *out_buffer, *out_buffer_memory, 0);
+}
+
+void GfxWindow::vk_copy_buffer(VkQueue queue, VkBuffer dest, VkBuffer src, VkDeviceSize size) {
+    auto allocInfo = VkCommandBufferAllocateInfo{
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandPool        = command_pool,
+        .commandBufferCount = 1,
+    };
+
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    VkBufferCopy copyRegion{};
+    copyRegion.size = size;
+    vkCmdCopyBuffer(commandBuffer, src, dest, 1, &copyRegion);
+
+    vkEndCommandBuffer(commandBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers    = &commandBuffer;
+
+    vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(queue);
+
+    vkFreeCommandBuffers(device, command_pool, 1, &commandBuffer);
+}
+
+template <typename T, auto Fn, typename... Args>
+Slice<T> vk_get_slice(Arena* arena, Args... args) {
+    u32 count = 0;
+    Fn(args..., &count, nullptr);
+    if (count == 0) return {};
+    Slice<T> ret_slice = arena->alloc_many<T>(count);
+    Fn(args..., &count, ret_slice.elems);
+    return ret_slice;
+}
+
+template <auto Fn, typename VecType, typename... Args>
+void vk_get_vec(VecType* vec, Args... args) {
+    u32 count = 0;
+    Fn(args..., &count, nullptr);
+    if (count == 0) {
+        vec->count = 0;
+        return;
+    }
+    if (count > vec->capacity) {
+        Panic("Results from vk_get_into_vec would extend beyond the capacity of the target vec");
+    }
+    Fn(args..., &count, vec->elems);
+    vec->count = count;
+}
+
+// -----------------------------------------------------------------------------
 }  // namespace

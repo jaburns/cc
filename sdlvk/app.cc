@@ -40,14 +40,8 @@ Array<Vertex, 4> vertices = {{
 
 Array<u16, 6> indices = {{0, 1, 2, 2, 3, 0}};
 
-void GfxApp::init(
-    VkDevice           device,
-    VkPhysicalDevice   physical_device,
-    VkSurfaceFormatKHR surface_format,
-    VkQueue            graphics_queue,
-    VkCommandPool      command_pool,
-    VkRenderPass       main_pass
-) {
+void GfxApp::init(GfxWindow* gfx) {
+    ZeroStruct(this);
     auto scratch = Arena::create(memory_get_global_allocator(), 0);
     {
         Slice<u8> vert_code   = fs_read_file_bytes(&scratch, "shaders/bin/triangle.vertex.spv");
@@ -58,7 +52,7 @@ void GfxApp::init(
             .codeSize = vert_code.count,
             .pCode    = (u32*)vert_code.elems,
         };
-        VKExpect(vkCreateShaderModule(device, &vert_create_info, nullptr, &vert_module));
+        VKExpect(vkCreateShaderModule(gfx->device, &vert_create_info, nullptr, &vert_module));
 
         Slice<u8> frag_code   = fs_read_file_bytes(&scratch, "shaders/bin/triangle.fragment.spv");
         auto      frag_module = VkShaderModule{};
@@ -68,7 +62,7 @@ void GfxApp::init(
             .codeSize = frag_code.count,
             .pCode    = (u32*)frag_code.elems,
         };
-        VKExpect(vkCreateShaderModule(device, &frag_create_info, nullptr, &frag_module));
+        VKExpect(vkCreateShaderModule(gfx->device, &frag_create_info, nullptr, &frag_module));
 
         auto vert_shader_stage_info = VkPipelineShaderStageCreateInfo{
             .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
@@ -151,7 +145,7 @@ void GfxApp::init(
             .pPushConstantRanges    = nullptr,
         };
         VkPipelineLayout pipeline_layout;
-        VKExpect(vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &pipeline_layout));
+        VKExpect(vkCreatePipelineLayout(gfx->device, &pipeline_layout_info, nullptr, &pipeline_layout));
 
         auto pipeline_info = VkGraphicsPipelineCreateInfo{
             .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -166,13 +160,13 @@ void GfxApp::init(
             .pDepthStencilState  = nullptr,
             .pColorBlendState    = &color_blending,
             .layout              = pipeline_layout,
-            .renderPass          = main_pass,
+            .renderPass          = gfx->main_pass,
             .subpass             = 0,
         };
-        VKExpect(vkCreateGraphicsPipelines(device, nullptr, 1, &pipeline_info, nullptr, &gfx_pipeline));
+        VKExpect(vkCreateGraphicsPipelines(gfx->device, nullptr, 1, &pipeline_info, nullptr, &gfx_pipeline));
 
-        vkDestroyShaderModule(device, frag_module, nullptr);
-        vkDestroyShaderModule(device, vert_module, nullptr);
+        vkDestroyShaderModule(gfx->device, frag_module, nullptr);
+        vkDestroyShaderModule(gfx->device, vert_module, nullptr);
 
         // vertex buffer
         {
@@ -181,29 +175,19 @@ void GfxApp::init(
             VkBuffer       staging_buffer;
             VkDeviceMemory staging_buffer_memory;
 
-            vk_create_buffer(
-                device, physical_device, size,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                &staging_buffer, &staging_buffer_memory
-            );
+            gfx->vk_create_buffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging_buffer, &staging_buffer_memory);
 
             void* data;
-            vkMapMemory(device, staging_buffer_memory, 0, size, 0, &data);
+            vkMapMemory(gfx->device, staging_buffer_memory, 0, size, 0, &data);
             memcpy(data, vertices.elems, size);
-            vkUnmapMemory(device, staging_buffer_memory);
+            vkUnmapMemory(gfx->device, staging_buffer_memory);
 
-            vk_create_buffer(
-                device, physical_device, size,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                &vertex_buffer, &vertex_buffer_memory
-            );
+            gfx->vk_create_buffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &vertex_buffer, &vertex_buffer_memory);
 
-            vk_copy_buffer(device, graphics_queue, command_pool, vertex_buffer, staging_buffer, size);
+            gfx->vk_copy_buffer(gfx->graphics_queue, vertex_buffer, staging_buffer, size);
 
-            vkDestroyBuffer(device, staging_buffer, nullptr);
-            vkFreeMemory(device, staging_buffer_memory, nullptr);
+            vkDestroyBuffer(gfx->device, staging_buffer, nullptr);
+            vkFreeMemory(gfx->device, staging_buffer_memory, nullptr);
         }
         // index buffer
         {
@@ -212,78 +196,63 @@ void GfxApp::init(
             VkBuffer       staging_buffer;
             VkDeviceMemory staging_buffer_memory;
 
-            vk_create_buffer(
-                device, physical_device, size,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                &staging_buffer, &staging_buffer_memory
-            );
+            gfx->vk_create_buffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, &staging_buffer, &staging_buffer_memory);
 
             void* data;
-            vkMapMemory(device, staging_buffer_memory, 0, size, 0, &data);
+            vkMapMemory(gfx->device, staging_buffer_memory, 0, size, 0, &data);
             memcpy(data, indices.elems, size);
-            vkUnmapMemory(device, staging_buffer_memory);
+            vkUnmapMemory(gfx->device, staging_buffer_memory);
 
-            vk_create_buffer(
-                device, physical_device, size,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                &index_buffer, &index_buffer_memory
-            );
+            gfx->vk_create_buffer(size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, &index_buffer, &index_buffer_memory);
 
-            vk_copy_buffer(device, graphics_queue, command_pool, index_buffer, staging_buffer, size);
+            gfx->vk_copy_buffer(gfx->graphics_queue, index_buffer, staging_buffer, size);
 
-            vkDestroyBuffer(device, staging_buffer, nullptr);
-            vkFreeMemory(device, staging_buffer_memory, nullptr);
+            vkDestroyBuffer(gfx->device, staging_buffer, nullptr);
+            vkFreeMemory(gfx->device, staging_buffer_memory, nullptr);
         }
     }
 
     scratch.destroy();
 }
 
-void GfxApp::frame(
-    VkCommandBuffer buffer,
-    VkRenderPass    main_pass,
-    VkFramebuffer   main_pass_framebuffer,
-    VkExtent2D      main_pass_extent
-) {
+void GfxApp::frame(GfxFrameContext ctx) {
     auto clear_color = VkClearValue{{{0.0f, 0.0f, 0.0f, 1.0f}}};
 
     auto render_pass_info = VkRenderPassBeginInfo{
         .sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .renderPass        = main_pass,
-        .framebuffer       = main_pass_framebuffer,
+        .renderPass        = ctx.main_pass,
+        .framebuffer       = ctx.main_pass_framebuffer,
         .renderArea.offset = {0, 0},
-        .renderArea.extent = main_pass_extent,
+        .renderArea.extent = ctx.main_pass_extent,
         .clearValueCount   = 1,
         .pClearValues      = &clear_color,
     };
-    vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBeginRenderPass(ctx.buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gfx_pipeline);
+    vkCmdBindPipeline(ctx.buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gfx_pipeline);
 
     auto viewport = VkViewport{
         .x        = 0.0f,
         .y        = 0.0f,
-        .width    = (f32)main_pass_extent.width,
-        .height   = (f32)main_pass_extent.height,
+        .width    = (f32)ctx.main_pass_extent.width,
+        .height   = (f32)ctx.main_pass_extent.height,
         .minDepth = 0.0f,
         .maxDepth = 1.0f,
     };
-    vkCmdSetViewport(buffer, 0, 1, &viewport);
+    vkCmdSetViewport(ctx.buffer, 0, 1, &viewport);
 
     auto scissor = VkRect2D{
         .offset = {0, 0},
-        .extent = main_pass_extent,
+        .extent = ctx.main_pass_extent,
     };
-    vkCmdSetScissor(buffer, 0, 1, &scissor);
+    vkCmdSetScissor(ctx.buffer, 0, 1, &scissor);
 
     VkDeviceSize offsets[] = {0};
-    vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffer, offsets);
-    vkCmdBindIndexBuffer(buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
-    vkCmdDrawIndexed(buffer, (u32)indices.count, 1, 0, 0, 0);
+    vkCmdBindVertexBuffers(ctx.buffer, 0, 1, &vertex_buffer, offsets);
+    vkCmdBindIndexBuffer(ctx.buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+    vkCmdDrawIndexed(ctx.buffer, (u32)indices.count, 1, 0, 0, 0);
 
-    vkCmdEndRenderPass(buffer);
+    vkCmdEndRenderPass(ctx.buffer);
 }
 
 }  // namespace
