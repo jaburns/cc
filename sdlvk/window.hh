@@ -17,9 +17,8 @@ struct JoystickState {
 
 struct GfxFrameContext {
     VkCommandBuffer buffer;
-    VkRenderPass    main_pass;
-    VkFramebuffer   main_pass_framebuffer;
-    VkExtent2D      main_pass_extent;
+    VkFramebuffer   framebuffer;
+    VkExtent2D      extent;
     u32             image_index;
 };
 

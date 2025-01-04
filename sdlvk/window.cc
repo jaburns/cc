@@ -650,11 +650,10 @@ top:
     VKExpect(vkBeginCommandBuffer(buffer, &begin_info));
 
     return GfxFrameContext{
-        .buffer                = buffer,
-        .main_pass             = main_pass,
-        .main_pass_framebuffer = main_pass_framebuffers[image_index],
-        .main_pass_extent      = swap_chain_extent,
-        .image_index           = image_index,
+        .buffer      = buffer,
+        .framebuffer = main_pass_framebuffers[image_index],
+        .extent      = swap_chain_extent,
+        .image_index = image_index,
     };
 }
 

@@ -16,4 +16,3 @@
 
 #include "audio.hh"
 #include "window.hh"
-#include "app.hh"
