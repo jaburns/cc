@@ -15,7 +15,7 @@ struct JoystickState {
 };
 
 struct GfxWindow {
-    static constexpr bool  ENABLE_VALIDATION_LAYERS = true;
+    static constexpr bool  ENABLE_VALIDATION_LAYERS = (bool)DEBUG;
     static constexpr usize MAX_FRAMES_IN_FLIGHT     = 2;
     static constexpr usize MAX_SWAP_CHAIN_IMAGES    = 4;
 
@@ -67,6 +67,7 @@ struct GfxWindow {
     bool           mouse_button;
 
     void init(cchar* window_title, SDL_AudioCallback sdl_audio_callback);
+
     void init_imgui();
     void create_swap_chain();
     bool poll();

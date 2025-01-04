@@ -169,49 +169,6 @@ void GfxWindow::create_swap_chain() {
     }
 }
 
-void GfxWindow::init_imgui() {
-    ImGui::CreateContext();
-    ImGui_ImplSDL2_InitForVulkan(sdl_window);
-
-    VkDescriptorPoolSize pool_sizes[] = {
-        {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
-        {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
-        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
-        {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
-        {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}
-    };
-
-    VkDescriptorPoolCreateInfo pool_info = {};
-    pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    pool_info.flags                      = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    pool_info.maxSets                    = 1000;
-    pool_info.poolSizeCount              = RawArrayLen(pool_sizes);
-    pool_info.pPoolSizes                 = pool_sizes;
-
-    VkDescriptorPool imguiPool;
-    VKExpect(vkCreateDescriptorPool(device, &pool_info, nullptr, &imguiPool));
-
-    auto init_info = ImGui_ImplVulkan_InitInfo{
-        .Instance       = instance,
-        .PhysicalDevice = physical_device,
-        .Device         = device,
-        .Queue          = graphics_queue,
-        .DescriptorPool = imguiPool,
-        .MinImageCount  = 3,
-        .ImageCount     = 3,
-        .MSAASamples    = VK_SAMPLE_COUNT_1_BIT,
-        .RenderPass     = render_pass,
-    };
-
-    ImGui_ImplVulkan_Init(&init_info);
-}
-
 void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
     ZeroStruct(this);
     auto scratch = Arena::create(memory_get_global_allocator(), 0);
@@ -324,7 +281,7 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
         }
 
         VKExpect(vkCreateInstance(&create_info, nullptr, &instance));
-        println("Vulkan instance created successfully");
+        log("vulkan instance created successfully");
 
         if (!SDL_Vulkan_CreateSurface(sdl_window, instance, &surface)) Panic("Failed to create Vulkan surface: %s\n", SDL_GetError());
     }
@@ -646,8 +603,51 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
             VKExpect(vkCreateFence(device, &fence_info, nullptr, &in_flight_fences[i]));
         }
     }
+#if EDITOR
+    {
+        ImGui::CreateContext();
+        ImGui_ImplSDL2_InitForVulkan(sdl_window);
 
-    init_imgui();
+        VkDescriptorPoolSize pool_sizes[] = {
+            {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
+            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000},
+            {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
+            {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}
+        };
+
+        VkDescriptorPoolCreateInfo pool_info = {};
+        pool_info.sType                      = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        pool_info.flags                      = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool_info.maxSets                    = 1000;
+        pool_info.poolSizeCount              = RawArrayLen(pool_sizes);
+        pool_info.pPoolSizes                 = pool_sizes;
+
+        VkDescriptorPool imgui_pool;
+        VKExpect(vkCreateDescriptorPool(device, &pool_info, nullptr, &imgui_pool));
+
+        auto init_info = ImGui_ImplVulkan_InitInfo{
+            .Instance       = instance,
+            .PhysicalDevice = physical_device,
+            .Device         = device,
+            .Queue          = graphics_queue,
+            .QueueFamily    = (u32)graphics_queue_idx,
+            .DescriptorPool = imgui_pool,
+            .MinImageCount  = 3,
+            .ImageCount     = 3,
+            .MSAASamples    = VK_SAMPLE_COUNT_1_BIT,
+            .RenderPass     = render_pass,
+        };
+
+        ImGui_ImplVulkan_Init(&init_info);
+    }
+#endif
 
     scratch.destroy();
 }
@@ -662,11 +662,14 @@ bool GfxWindow::poll() {
 
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+#if EDITOR
         ImGui_ImplSDL2_ProcessEvent(&event);
         bool imgui_wants_mouse    = ImGui::GetIO().WantCaptureMouse;
         bool imgui_wants_keyboard = ImGui::GetIO().WantCaptureKeyboard;
-        // bool imgui_wants_mouse    = false;
-        // bool imgui_wants_keyboard = false;
+#else
+        constexpr bool imgui_wants_mouse    = false;
+        constexpr bool imgui_wants_keyboard = false;
+#endif
 
         switch (event.type) {
             case SDL_WINDOWEVENT: {
@@ -747,11 +750,11 @@ bool GfxWindow::poll() {
         }
     }
 
+#if EDITOR
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
-
-    ImGui::ShowDemoWindow();
+#endif
 
     return true;
 }
@@ -793,7 +796,9 @@ top:
 
     vkResetFences(device, 1, &in_flight_fences[cur_framebuffer_idx]);
 
+#if EDITOR
     ImGui::Render();
+#endif
 
     {
         auto& buffer = command_buffers[cur_framebuffer_idx];
@@ -842,7 +847,9 @@ top:
 
         vkCmdDraw(buffer, vertices.count, 1, 0, 0);
 
+#if EDITOR
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buffer);
+#endif
 
         vkCmdEndRenderPass(buffer);
 
@@ -878,7 +885,6 @@ top:
         log("vkQueuePresentKHR result: ", result);
         framebuffer_resized = false;
         create_swap_chain();
-        // recreate_imgui();
     } else if (result != VK_SUCCESS) {
         Panic("Failed to present swap chain image");
     }

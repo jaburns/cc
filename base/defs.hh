@@ -3,6 +3,9 @@
 #ifndef DEBUG
 #define DEBUG 0
 #endif
+#ifndef EDITOR
+#define EDITOR 0
+#endif
 
 #if DEBUG
 #ifdef _MSC_VER
