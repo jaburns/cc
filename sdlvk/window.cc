@@ -218,7 +218,6 @@ void GfxWindow::create_swap_chain() {
         VkImageView attachments[] = {
             swap_chain_image_views.elems[i]
         };
-
         auto framebuffer_info = VkFramebufferCreateInfo{
             .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass      = render_pass,
@@ -229,6 +228,23 @@ void GfxWindow::create_swap_chain() {
             .layers          = 1,
         };
         VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &swap_chain_framebuffers[i]));
+    }
+
+    imgui_framebuffers.count = swap_chain_image_views.count;
+    for (u32 i = 0; i < imgui_framebuffers.count; ++i) {
+        VkImageView attachments[] = {
+            swap_chain_image_views.elems[i],
+        };
+        auto framebuffer_info = VkFramebufferCreateInfo{
+            .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .renderPass      = imgui_render_pass,
+            .attachmentCount = 1,
+            .pAttachments    = attachments,
+            .width           = swap_chain_extent.width,
+            .height          = swap_chain_extent.height,
+            .layers          = 1,
+        };
+        VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &imgui_framebuffers[i]));
     }
 }
 
@@ -451,7 +467,7 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
             .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         };
         auto color_attachment_ref = VkAttachmentReference{
             .attachment = 0,
@@ -480,6 +496,47 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
             .pDependencies   = &dependency,
         };
         VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &render_pass));
+    }
+    {
+        VkAttachmentDescription color_attachment{
+            .format         = surface_format.format,
+            .samples        = VK_SAMPLE_COUNT_1_BIT,
+            .loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD,
+            .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        };
+        VkAttachmentReference color_attachment_ref{
+            .attachment = 0,
+            .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+        };
+        VkSubpassDescription subpass{
+            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+            .colorAttachmentCount = 1,
+            .pColorAttachments    = &color_attachment_ref,
+        };
+        VkSubpassDependency dependency{
+            .srcSubpass    = VK_SUBPASS_EXTERNAL,
+            .dstSubpass    = 0,
+            .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+        };
+
+        VkRenderPassCreateInfo render_pass_info{
+            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+            .attachmentCount = 1,
+            .pAttachments    = &color_attachment,
+            .subpassCount    = 1,
+            .pSubpasses      = &subpass,
+            .dependencyCount = 1,
+            .pDependencies   = &dependency,
+        };
+
+        VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &imgui_render_pass));
     }
 
     create_swap_chain();
@@ -739,7 +796,7 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
             .MinImageCount  = 3,
             .ImageCount     = 3,
             .MSAASamples    = VK_SAMPLE_COUNT_1_BIT,
-            .RenderPass     = render_pass,
+            .RenderPass     = imgui_render_pass,
         };
 
         ImGui_ImplVulkan_Init(&init_info);
@@ -747,10 +804,6 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
 #endif
 
     scratch.destroy();
-}
-
-void GfxWindow::wait_device_idle() {
-    vkDeviceWaitIdle(device);
 }
 
 bool GfxWindow::poll() {
@@ -808,6 +861,7 @@ bool GfxWindow::poll() {
                 break;
             }
             case SDL_QUIT: {
+                goto quit;
                 return false;
             }
             case SDL_KEYDOWN: {
@@ -852,8 +906,11 @@ bool GfxWindow::poll() {
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
 #endif
-
     return true;
+
+quit:
+    vkDeviceWaitIdle(device);
+    return false;
 }
 
 void GfxWindow::swap() {
@@ -944,11 +1001,25 @@ top:
         vkCmdBindIndexBuffer(buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
         vkCmdDrawIndexed(buffer, (u32)indices.count, 1, 0, 0, 0);
 
-#if EDITOR
-        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buffer);
-#endif
+        // ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buffer);
 
         vkCmdEndRenderPass(buffer);
+
+#if EDITOR
+        {
+            auto imgui_rp_begin = VkRenderPassBeginInfo{
+                .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                .renderPass      = imgui_render_pass,
+                .framebuffer     = imgui_framebuffers[image_index],
+                .renderArea      = {{0, 0}, swap_chain_extent},
+                .clearValueCount = 0,
+                .pClearValues    = nullptr,
+            };
+            vkCmdBeginRenderPass(buffer, &imgui_rp_begin, VK_SUBPASS_CONTENTS_INLINE);
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buffer);
+            vkCmdEndRenderPass(buffer);
+        }
+#endif
 
         VKExpect(vkEndCommandBuffer(buffer));
     }

@@ -36,12 +36,15 @@ struct GfxWindow {
     InlineVec<VkImage, MAX_SWAP_CHAIN_IMAGES>       swap_chain_images;
     InlineVec<VkImageView, MAX_SWAP_CHAIN_IMAGES>   swap_chain_image_views;
     InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> swap_chain_framebuffers;
+    InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> imgui_framebuffers;
 
     VkRenderPass     render_pass;
     VkPipelineLayout pipeline_layout;
     VkPipeline       graphics_pipeline;
     VkCommandPool    command_pool;
     u32              cur_framebuffer_idx;
+
+    VkRenderPass imgui_render_pass;
 
     bool framebuffer_resized;
 
@@ -69,12 +72,9 @@ struct GfxWindow {
     bool           mouse_button;
 
     void init(cchar* window_title, SDL_AudioCallback sdl_audio_callback);
-
-    void init_imgui();
     void create_swap_chain();
     bool poll();
     void swap();
-    void wait_device_idle();
 };
 
 #define VKExpect(expr)                                                                            \
