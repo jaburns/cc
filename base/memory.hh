@@ -2,8 +2,8 @@
 #include "inc.hh"
 namespace {
 
-#define MEMORY_RESERVE_SIZE       Gb(32)
-#define MEMORY_DEFAULT_BLOCK_SIZE Mb(1)
+#define MEMORY_RESERVE_SIZE       32_gb
+#define MEMORY_DEFAULT_BLOCK_SIZE 1_mb
 
 struct MemoryReservation {
     u8*   base;

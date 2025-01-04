@@ -31,7 +31,7 @@ ArenaMark Arena::mark() {
 
 void Arena::restore(ArenaMark saved) {
     while (resources_stack && resources_stack->target >= saved.ptr) {
-        resources_stack->drop(resources_stack->target);
+        resources_stack->drop(resources_stack->context, resources_stack->target);
         SllStackPop(resources_stack);
     }
     cur = saved.ptr;
@@ -40,7 +40,7 @@ void Arena::restore(ArenaMark saved) {
 
 void Arena::clear() {
     while (resources_stack) {
-        resources_stack->drop(resources_stack->target);
+        resources_stack->drop(resources_stack->context, resources_stack->target);
         SllStackPop(resources_stack);
     }
     cur = reservation.base;
@@ -80,15 +80,14 @@ forall(T) Slice<T> Arena::alloc_many(usize count) {
     return slice;
 }
 
-forall(T) T* Arena::alloc_resource(void (*drop)(T*)) {
+forall(T, U) T* Arena::alloc_resource(U* context, void (*drop)(U*, T*)) {
     T*                   result = alloc_one<T>();
     Arena::ResourceNode* node   = alloc_one<Arena::ResourceNode>();
 
-    node->target = result;
-    node->drop   = drop;
+    node->target  = result;
+    node->drop    = drop;
+    node->context = context;
     SllStackPush(resources_stack, node);
-
-    return result;
 }
 
 // -----------------------------------------------------------------------------

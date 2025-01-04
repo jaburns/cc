@@ -2,7 +2,7 @@
 namespace {
 // -----------------------------------------------------------------------------
 
-void GfxWindow::create_swap_chain() {
+void Gfx::create_swap_chain() {
     log("creating swap chain");
 
     if (swap_chain) {
@@ -120,7 +120,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
 
 // -----------------------------------------------------------------------------
 
-void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
+void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
     ZeroStruct(this);
     auto scratch = Arena::create(memory_get_global_allocator(), 0);
 
@@ -493,7 +493,7 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
 
 // -----------------------------------------------------------------------------
 
-bool GfxWindow::poll() {
+bool Gfx::poll() {
     mouse_delta       = IVEC2_ZERO;
     mouse_delta_wheel = 0.f;
 
@@ -548,7 +548,6 @@ bool GfxWindow::poll() {
                 break;
             }
             case SDL_QUIT: {
-                goto quit;
                 return false;
             }
             case SDL_KEYDOWN: {
@@ -594,15 +593,15 @@ bool GfxWindow::poll() {
     ImGui::NewFrame();
 #endif
     return true;
+}
 
-quit:
+void Gfx::wait_safe_quit() {
     vkDeviceWaitIdle(device);
-    return false;
 }
 
 // -----------------------------------------------------------------------------
 
-GfxFrameContext GfxWindow::begin_frame() {
+void Gfx::begin_frame() {
 top:
     vkWaitForFences(device, 1, &in_flight_fences[cur_framebuffer_idx], VK_TRUE, UINT64_MAX);
 
@@ -649,31 +648,31 @@ top:
     };
     VKExpect(vkBeginCommandBuffer(buffer, &begin_info));
 
-    return GfxFrameContext{
-        .buffer      = buffer,
+    frame = {
+        .cmd_buffer  = buffer,
         .framebuffer = main_pass_framebuffers[image_index],
         .extent      = swap_chain_extent,
         .image_index = image_index,
     };
 }
 
-void GfxWindow::end_frame(GfxFrameContext ctx) {
+void Gfx::end_frame() {
 #if EDITOR
     ImGui::Render();
 
     auto imgui_rp_begin = VkRenderPassBeginInfo{
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass      = imgui_render_pass,
-        .framebuffer     = imgui_framebuffers[ctx.image_index],
+        .framebuffer     = imgui_framebuffers[frame.image_index],
         .renderArea      = {{0, 0}, swap_chain_extent},
         .clearValueCount = 0,
         .pClearValues    = nullptr,
     };
-    vkCmdBeginRenderPass(ctx.buffer, &imgui_rp_begin, VK_SUBPASS_CONTENTS_INLINE);
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ctx.buffer);
-    vkCmdEndRenderPass(ctx.buffer);
+    vkCmdBeginRenderPass(frame.cmd_buffer, &imgui_rp_begin, VK_SUBPASS_CONTENTS_INLINE);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame.cmd_buffer);
+    vkCmdEndRenderPass(frame.cmd_buffer);
 #endif
-    VKExpect(vkEndCommandBuffer(ctx.buffer));
+    VKExpect(vkEndCommandBuffer(frame.cmd_buffer));
 
     VkPipelineStageFlags wait_stages[] = {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
@@ -696,7 +695,7 @@ void GfxWindow::end_frame(GfxFrameContext ctx) {
         .pWaitSemaphores    = &render_finished_semaphores[cur_framebuffer_idx],
         .swapchainCount     = 1,
         .pSwapchains        = &swap_chain,
-        .pImageIndices      = &ctx.image_index,
+        .pImageIndices      = &frame.image_index,
     };
 
     VkResult result = vkQueuePresentKHR(present_queue, &present_info);
@@ -713,7 +712,7 @@ void GfxWindow::end_frame(GfxFrameContext ctx) {
 
 // -----------------------------------------------------------------------------
 
-void GfxWindow::vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* out_buffer, VkDeviceMemory* out_buffer_memory) {
+void Gfx::vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkBuffer* out_buffer, VkDeviceMemory* out_buffer_memory) {
     auto create_info = VkBufferCreateInfo{
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size        = size,  // sizeof(Vertex) * vertices.count,
@@ -750,9 +749,12 @@ void GfxWindow::vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, Vk
     VKExpect(vkAllocateMemory(device, &alloc_info, nullptr, out_buffer_memory));
 
     vkBindBufferMemory(device, *out_buffer, *out_buffer_memory, 0);
+
+    drop_pool->push(vkDestroyBuffer, *out_buffer);
+    drop_pool->push(vkFreeMemory, *out_buffer_memory);
 }
 
-void GfxWindow::vk_copy_buffer(VkQueue queue, VkBuffer dest, VkBuffer src, VkDeviceSize size) {
+void Gfx::vk_copy_buffer(VkQueue queue, VkBuffer dest, VkBuffer src, VkDeviceSize size) {
     auto allocInfo = VkCommandBufferAllocateInfo{
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -809,6 +811,25 @@ void vk_get_vec(VecType* vec, Args... args) {
     }
     Fn(args..., &count, vec->elems);
     vec->count = count;
+}
+
+// -----------------------------------------------------------------------------
+
+VKDropPool VKDropPool::alloc(Arena* arena, usize capacity) {
+    VKDropPool ret = {};
+    ret.elems      = Vec<Element>::alloc(arena, capacity);
+    return ret;
+}
+
+forall(T) void VKDropPool::push(void (*drop)(VkDevice, T*, const VkAllocationCallbacks*), T* target) {
+    *elems.push() = Element{(DropFn)drop, target};
+}
+
+void VKDropPool::drop_all(VkDevice device) {
+    for (u32 i = 0; i < elems.count; ++i) {
+        elems.elems[i].drop(device, elems.elems[i].target, nullptr);
+    }
+    elems.count = 0;
 }
 
 // -----------------------------------------------------------------------------

@@ -15,4 +15,4 @@
 #include "../base/inc.hh"
 
 #include "audio.hh"
-#include "window.hh"
+#include "gfx.hh"

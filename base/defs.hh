@@ -53,9 +53,9 @@ typedef size_t    usize;
 #define DebugAssert(x)
 #endif
 
-#define Kb(n) (((u64)(n)) << 10)
-#define Mb(n) (((u64)(n)) << 20)
-#define Gb(n) (((u64)(n)) << 30)
+u64 operator""_kb(u64 n) { return n << 10; }
+u64 operator""_mb(u64 n) { return n << 20; }
+u64 operator""_gb(u64 n) { return n << 30; }
 
 #define Stringify(x)      #x
 #define Concatenate(x, y) x##y

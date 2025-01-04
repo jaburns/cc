@@ -3,13 +3,13 @@ namespace {
 // --------------------------------------------------------------------------------------------------------------------
 #define This HashArray<K, V>
 
-forall(K, V) This* This::construct(Arena* arena, u32 capacity, u32 max_elems) {
-    u32*       hashes     = arena->alloc_many<u32>(capacity).elems;
-    K*         keys       = arena->alloc_many<K>(capacity).elems;
-    V*         values     = arena->alloc_many<V>(capacity).elems;
-    V*         value_stub = arena->alloc_one<V>();
-    HashArray* map        = arena->alloc_one<HashArray<K, V>>();
+forall(K, V) This This::construct(Arena* arena, u32 capacity, u32 max_elems) {
+    u32* hashes     = arena->alloc_many<u32>(capacity).elems;
+    K*   keys       = arena->alloc_many<K>(capacity).elems;
+    V*   values     = arena->alloc_many<V>(capacity).elems;
+    V*   value_stub = arena->alloc_one<V>();
 
+    This map       = {};
     map->capacity  = capacity;
     map->max_elems = max_elems;
 
@@ -22,13 +22,13 @@ forall(K, V) This* This::construct(Arena* arena, u32 capacity, u32 max_elems) {
     return map;
 }
 
-forall(K, V) This* This::alloc_with_cap(Arena* arena, u32 capacity) {
+forall(K, V) This This::alloc_with_cap(Arena* arena, u32 capacity) {
     capacity      = next_power_of_2(capacity);
     u32 max_elems = capacity * LOAD_FACTOR_PERCENT / 100;
     return This::construct(arena, capacity, max_elems);
 }
 
-forall(K, V) This* This::alloc_with_elems(Arena* arena, u32 max_elems) {
+forall(K, V) This This::alloc_with_elems(Arena* arena, u32 max_elems) {
     u32 capacity = next_power_of_2(max_elems * 100 / LOAD_FACTOR_PERCENT);
     return This::construct(arena, capacity, max_elems);
 }

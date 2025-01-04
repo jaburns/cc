@@ -9,8 +9,9 @@ struct ArenaMark {
 class Arena {
     struct ResourceNode {
         ResourceNode* next;
+        void*         context;
         void*         target;
-        void          (*drop)(void*);
+        void          (*drop)(void* context, void* target);
     };
 
     MemoryReservation reservation     = {};
@@ -30,7 +31,7 @@ class Arena {
 
     forall(T) T* alloc_one();
     forall(T) Slice<T> alloc_many(usize count);
-    forall(T) T* alloc_resource(void (*drop)(T*));
+    forall(T, U) T* alloc_resource(U* context, void (*drop)(U*, T*));
 };
 
 class ScratchArena : public NoCopy {

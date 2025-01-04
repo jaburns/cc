@@ -15,14 +15,31 @@ struct JoystickState {
     Array<bool, BUTTON_COUNT> buttons_down;
 };
 
-struct GfxFrameContext {
-    VkCommandBuffer buffer;
-    VkFramebuffer   framebuffer;
-    VkExtent2D      extent;
-    u32             image_index;
+class VKDropPool {
+    typedef void (*DropFn)(VkDevice, void*, void*);
+
+    struct Element {
+        DropFn drop;
+        void*  target;
+    };
+    Vec<Element> elems;
+
+  public:
+    static VKDropPool alloc(Arena* arena, usize capacity);
+    forall(T) void push(void (*drop)(VkDevice, T*, const VkAllocationCallbacks*), T* target);
+    void drop_all(VkDevice device);
 };
 
-class GfxWindow {
+class Gfx {
+  public:
+    struct Frame {
+        VkCommandBuffer cmd_buffer;
+        VkFramebuffer   framebuffer;
+        VkExtent2D      extent;
+        u32             image_index;
+    };
+
+  private:
     static constexpr bool  ENABLE_VALIDATION_LAYERS = (bool)DEBUG;
     static constexpr usize MAX_FRAMES_IN_FLIGHT     = 2;
     static constexpr usize MAX_SWAP_CHAIN_IMAGES    = 4;
@@ -59,6 +76,7 @@ class GfxWindow {
     VkQueue            graphics_queue;
     VkCommandPool      command_pool;
     VkRenderPass       main_pass;
+    Frame              frame;
 
     AudioPlayer     audio_player;
     AudioCallbackFn audio_callback_fn;
@@ -69,12 +87,13 @@ class GfxWindow {
     f32             mouse_delta_wheel;
     bool            mouse_button;
 
-    void            init(cchar* window_title, SDL_AudioCallback sdl_audio_callback);
-    bool            poll();
-    GfxFrameContext begin_frame();
-    void            end_frame(GfxFrameContext ctx);
+    void init(cchar* window_title, SDL_AudioCallback sdl_audio_callback);
+    bool poll();
+    void begin_frame();
+    void end_frame();
+    void wait_safe_quit();
 
-    void vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer* out_buffer, VkDeviceMemory* out_buffer_memory);
+    void vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkBuffer* out_buffer, VkDeviceMemory* out_buffer_memory);
     void vk_copy_buffer(VkQueue queue, VkBuffer dest, VkBuffer src, VkDeviceSize size);
 
   private:

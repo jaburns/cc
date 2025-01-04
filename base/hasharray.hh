@@ -19,8 +19,8 @@ forall(K, V) class HashArray {
     u32 max_elems = {};
     u32 count     = {};
 
-    static HashArray* alloc_with_cap(Arena* arena, u32 capacity);
-    static HashArray* alloc_with_elems(Arena* arena, u32 max_elems);
+    static HashArray alloc_with_cap(Arena* arena, u32 capacity);
+    static HashArray alloc_with_elems(Arena* arena, u32 max_elems);
 
     V*   insert(K* key);
     V*   maybe_get(K* key);
@@ -33,7 +33,7 @@ forall(K, V) class HashArray {
     HashArrayIter<K, V> end() { return HashArrayIter<K, V>{}; }
 
   private:
-    static HashArray* construct(Arena* arena, u32 capacity, u32 max_elems);
+    static HashArray construct(Arena* arena, u32 capacity, u32 max_elems);
 
     u32 find_idx(K* key);
 };
