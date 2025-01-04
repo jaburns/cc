@@ -14,6 +14,8 @@ struct JoystickState {
     Array<bool, BUTTON_COUNT> buttons_down;
 };
 
+struct GfxApp;
+
 struct GfxWindow {
     static constexpr bool  ENABLE_VALIDATION_LAYERS = (bool)DEBUG;
     static constexpr usize MAX_FRAMES_IN_FLIGHT     = 2;
@@ -35,16 +37,14 @@ struct GfxWindow {
 
     InlineVec<VkImage, MAX_SWAP_CHAIN_IMAGES>       swap_chain_images;
     InlineVec<VkImageView, MAX_SWAP_CHAIN_IMAGES>   swap_chain_image_views;
-    InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> swap_chain_framebuffers;
     InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> imgui_framebuffers;
+    InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> main_pass_framebuffers;
 
-    VkRenderPass     render_pass;
-    VkPipelineLayout pipeline_layout;
-    VkPipeline       graphics_pipeline;
-    VkCommandPool    command_pool;
-    u32              cur_framebuffer_idx;
-
+    VkRenderPass main_pass;
     VkRenderPass imgui_render_pass;
+
+    VkCommandPool command_pool;
+    u32           cur_framebuffer_idx;
 
     bool framebuffer_resized;
 
@@ -52,11 +52,6 @@ struct GfxWindow {
     Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     image_available_semaphores;
     Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     render_finished_semaphores;
     Array<VkFence, MAX_FRAMES_IN_FLIGHT>         in_flight_fences;
-
-    VkBuffer       vertex_buffer;
-    VkDeviceMemory vertex_buffer_memory;
-    VkBuffer       index_buffer;
-    VkDeviceMemory index_buffer_memory;
 
     SDL_AudioDeviceID sdl_audio_device;
     AudioCallbackFn   audio_callback_fn;
@@ -70,6 +65,8 @@ struct GfxWindow {
     ivec2          mouse_delta;
     f32            mouse_delta_wheel;
     bool           mouse_button;
+
+    GfxApp* app;
 
     void init(cchar* window_title, SDL_AudioCallback sdl_audio_callback);
     void create_swap_chain();

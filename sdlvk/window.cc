@@ -11,45 +11,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL gfx_vulkan_debug_callback(
     return VK_FALSE;
 }
 
-struct Vertex {
-    vec2 pos;
-    vec3 color;
-
-    static VkVertexInputBindingDescription get_binding_desc() {
-        return VkVertexInputBindingDescription{
-            .binding   = 0,
-            .stride    = sizeof(Vertex),
-            .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-        };
-    }
-
-    static Array<VkVertexInputAttributeDescription, 2> get_attribute_descs() {
-        return Array<VkVertexInputAttributeDescription, 2>{{
-            {
-                .binding  = 0,
-                .location = 0,
-                .format   = VK_FORMAT_R32G32_SFLOAT,
-                .offset   = offsetof(Vertex, pos),
-            },
-            {
-                .binding  = 0,
-                .location = 1,
-                .format   = VK_FORMAT_R32G32B32_SFLOAT,
-                .offset   = offsetof(Vertex, color),
-            },
-        }};
-    }
-};
-
-Array<Vertex, 4> vertices = {{
-    {vec2(-0.5f, -0.5f), vec3(1.0f, 0.0f, 0.0f)},
-    {vec2(0.5f, -0.5f), vec3(0.0f, 1.0f, 0.0f)},
-    {vec2(0.5f, 0.5f), vec3(0.0f, 0.0f, 1.0f)},
-    {vec2(-0.5f, 0.5f), vec3(1.0f, 1.0f, 1.0f)},
-}};
-
-Array<u16, 6> indices = {{0, 1, 2, 2, 3, 0}};
-
 template <typename T, auto Fn, typename... Args>
 Slice<T> vk_get_slice(Arena* arena, Args... args) {
     u32 count = 0;
@@ -152,8 +113,11 @@ void GfxWindow::create_swap_chain() {
 
     if (swap_chain) {
         vkDeviceWaitIdle(device);
-        for (usize i = 0; i < swap_chain_framebuffers.count; ++i) {
-            vkDestroyFramebuffer(device, swap_chain_framebuffers[i], nullptr);
+        for (usize i = 0; i < main_pass_framebuffers.count; ++i) {
+            vkDestroyFramebuffer(device, main_pass_framebuffers[i], nullptr);
+        }
+        for (usize i = 0; i < imgui_framebuffers.count; ++i) {
+            vkDestroyFramebuffer(device, imgui_framebuffers[i], nullptr);
         }
         for (usize i = 0; i < swap_chain_image_views.count; ++i) {
             vkDestroyImageView(device, swap_chain_image_views[i], nullptr);
@@ -213,21 +177,21 @@ void GfxWindow::create_swap_chain() {
         VKExpect(vkCreateImageView(device, &create_info, nullptr, &swap_chain_image_views[i]));
     }
 
-    swap_chain_framebuffers.count = swap_chain_images.count;
-    for (u32 i = 0; i < swap_chain_framebuffers.count; ++i) {
+    main_pass_framebuffers.count = swap_chain_image_views.count;
+    for (u32 i = 0; i < main_pass_framebuffers.count; ++i) {
         VkImageView attachments[] = {
             swap_chain_image_views.elems[i]
         };
         auto framebuffer_info = VkFramebufferCreateInfo{
             .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            .renderPass      = render_pass,
+            .renderPass      = main_pass,
             .attachmentCount = 1,
             .pAttachments    = attachments,
-            .width           = swap_chain_extent.width,
-            .height          = swap_chain_extent.height,
+            .width           = extent.width,
+            .height          = extent.height,
             .layers          = 1,
         };
-        VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &swap_chain_framebuffers[i]));
+        VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &main_pass_framebuffers[i]));
     }
 
     imgui_framebuffers.count = swap_chain_image_views.count;
@@ -251,6 +215,8 @@ void GfxWindow::create_swap_chain() {
 void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
     ZeroStruct(this);
     auto scratch = Arena::create(memory_get_global_allocator(), 0);
+
+    app = (GfxApp*)memory_get_global_allocator().memory_heap_alloc(sizeof(GfxApp));
 
     auto validation_layers = Array(
         (cchar*)"VK_LAYER_KHRONOS_validation"
@@ -495,7 +461,7 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
             .dependencyCount = 1,
             .pDependencies   = &dependency,
         };
-        VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &render_pass));
+        VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &main_pass));
     }
     {
         VkAttachmentDescription color_attachment{
@@ -539,202 +505,13 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
         VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &imgui_render_pass));
     }
 
-    create_swap_chain();
-
-    // create graphics pipeline
     {
-        Slice<u8> vert_code   = fs_read_file_bytes(&scratch, "shaders/bin/triangle.vertex.spv");
-        auto      vert_module = VkShaderModule{};
-
-        auto vert_create_info = VkShaderModuleCreateInfo{
-            .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .codeSize = vert_code.count,
-            .pCode    = (u32*)vert_code.elems,
-        };
-        VKExpect(vkCreateShaderModule(device, &vert_create_info, nullptr, &vert_module));
-
-        Slice<u8> frag_code   = fs_read_file_bytes(&scratch, "shaders/bin/triangle.fragment.spv");
-        auto      frag_module = VkShaderModule{};
-
-        auto frag_create_info = VkShaderModuleCreateInfo{
-            .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-            .codeSize = frag_code.count,
-            .pCode    = (u32*)frag_code.elems,
-        };
-        VKExpect(vkCreateShaderModule(device, &frag_create_info, nullptr, &frag_module));
-
-        auto vert_shader_stage_info = VkPipelineShaderStageCreateInfo{
-            .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage  = VK_SHADER_STAGE_VERTEX_BIT,
-            .module = vert_module,
-            .pName  = "main",
-        };
-        auto frag_shader_stage_info = VkPipelineShaderStageCreateInfo{
-            .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
-            .module = frag_module,
-            .pName  = "main",
-        };
-        VkPipelineShaderStageCreateInfo shader_stages[] = {
-            vert_shader_stage_info,
-            frag_shader_stage_info,
-        };
-
-        auto vertex_binding_desc    = Vertex::get_binding_desc();
-        auto vertex_attribute_descs = Vertex::get_attribute_descs();
-
-        auto vertex_input_info = VkPipelineVertexInputStateCreateInfo{
-            .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-            .vertexBindingDescriptionCount   = 1,
-            .pVertexBindingDescriptions      = &vertex_binding_desc,
-            .vertexAttributeDescriptionCount = (u32)vertex_attribute_descs.count,
-            .pVertexAttributeDescriptions    = vertex_attribute_descs.elems,
-        };
-        auto input_assembly = VkPipelineInputAssemblyStateCreateInfo{
-            .sType                  = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-            .topology               = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-            .primitiveRestartEnable = VK_FALSE,
-        };
-        VkDynamicState dynamic_states[] = {
-            VK_DYNAMIC_STATE_VIEWPORT,
-            VK_DYNAMIC_STATE_SCISSOR
-        };
-        auto dynamic_state = VkPipelineDynamicStateCreateInfo{
-            .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-            .dynamicStateCount = RawArrayLen(dynamic_states),
-            .pDynamicStates    = dynamic_states,
-        };
-        auto viewport_state = VkPipelineViewportStateCreateInfo{
-            .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-            .viewportCount = 1,
-            .scissorCount  = 1,
-        };
-        auto rasterizer = VkPipelineRasterizationStateCreateInfo{
-            .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-            .depthClampEnable        = VK_FALSE,
-            .rasterizerDiscardEnable = VK_FALSE,
-            .polygonMode             = VK_POLYGON_MODE_FILL,
-            .lineWidth               = 1.f,
-            .cullMode                = VK_CULL_MODE_BACK_BIT,
-            .frontFace               = VK_FRONT_FACE_CLOCKWISE,
-            .depthBiasEnable         = VK_FALSE,
-        };
-        auto multisampling = VkPipelineMultisampleStateCreateInfo{
-            .sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-            .sampleShadingEnable  = VK_FALSE,
-            .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
-        };
-        auto color_blend_attachment = VkPipelineColorBlendAttachmentState{
-            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
-            .blendEnable    = VK_FALSE,
-        };
-        auto color_blending = VkPipelineColorBlendStateCreateInfo{
-            .sType           = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-            .logicOpEnable   = VK_FALSE,
-            .logicOp         = VK_LOGIC_OP_COPY,
-            .attachmentCount = 1,
-            .pAttachments    = &color_blend_attachment,
-        };
-
-        auto pipeline_layout_info = VkPipelineLayoutCreateInfo{
-            .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            .setLayoutCount         = 0,
-            .pSetLayouts            = nullptr,
-            .pushConstantRangeCount = 0,
-            .pPushConstantRanges    = nullptr,
-        };
-        VKExpect(vkCreatePipelineLayout(device, &pipeline_layout_info, nullptr, &pipeline_layout));
-
-        auto pipeline_info = VkGraphicsPipelineCreateInfo{
-            .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-            .stageCount          = 2,
-            .pStages             = shader_stages,
-            .pVertexInputState   = &vertex_input_info,
-            .pInputAssemblyState = &input_assembly,
-            .pDynamicState       = &dynamic_state,
-            .pViewportState      = &viewport_state,
-            .pRasterizationState = &rasterizer,
-            .pMultisampleState   = &multisampling,
-            .pDepthStencilState  = nullptr,
-            .pColorBlendState    = &color_blending,
-            .layout              = pipeline_layout,
-            .renderPass          = render_pass,
-            .subpass             = 0,
-        };
-        VKExpect(vkCreateGraphicsPipelines(device, nullptr, 1, &pipeline_info, nullptr, &graphics_pipeline));
-
-        vkDestroyShaderModule(device, frag_module, nullptr);
-        vkDestroyShaderModule(device, vert_module, nullptr);
-
         auto pool_info = VkCommandPoolCreateInfo{
             .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
             .queueFamilyIndex = (u32)graphics_queue_idx,
         };
         VKExpect(vkCreateCommandPool(device, &pool_info, nullptr, &command_pool));
-
-        // vertex buffer
-        {
-            VkDeviceSize size = sizeof(Vertex) * vertices.count;
-
-            VkBuffer       staging_buffer;
-            VkDeviceMemory staging_buffer_memory;
-
-            vk_create_buffer(
-                device, physical_device, size,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                &staging_buffer, &staging_buffer_memory
-            );
-
-            void* data;
-            vkMapMemory(device, staging_buffer_memory, 0, size, 0, &data);
-            memcpy(data, vertices.elems, size);
-            vkUnmapMemory(device, staging_buffer_memory);
-
-            vk_create_buffer(
-                device, physical_device, size,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                &vertex_buffer, &vertex_buffer_memory
-            );
-
-            vk_copy_buffer(device, graphics_queue, command_pool, vertex_buffer, staging_buffer, size);
-
-            vkDestroyBuffer(device, staging_buffer, nullptr);
-            vkFreeMemory(device, staging_buffer_memory, nullptr);
-        }
-        // index buffer
-        {
-            VkDeviceSize size = sizeof(u16) * indices.count;
-
-            VkBuffer       staging_buffer;
-            VkDeviceMemory staging_buffer_memory;
-
-            vk_create_buffer(
-                device, physical_device, size,
-                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                &staging_buffer, &staging_buffer_memory
-            );
-
-            void* data;
-            vkMapMemory(device, staging_buffer_memory, 0, size, 0, &data);
-            memcpy(data, indices.elems, size);
-            vkUnmapMemory(device, staging_buffer_memory);
-
-            vk_create_buffer(
-                device, physical_device, size,
-                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                &index_buffer, &index_buffer_memory
-            );
-
-            vk_copy_buffer(device, graphics_queue, command_pool, index_buffer, staging_buffer, size);
-
-            vkDestroyBuffer(device, staging_buffer, nullptr);
-            vkFreeMemory(device, staging_buffer_memory, nullptr);
-        }
 
         auto alloc_info = VkCommandBufferAllocateInfo{
             .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -802,6 +579,10 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
         ImGui_ImplVulkan_Init(&init_info);
     }
 #endif
+
+    create_swap_chain();
+
+    app->init(device, physical_device, surface_format, graphics_queue, command_pool, main_pass);
 
     scratch.destroy();
 }
@@ -965,45 +746,7 @@ top:
         };
         VKExpect(vkBeginCommandBuffer(buffer, &begin_info));
 
-        auto clear_color = VkClearValue{{{0.0f, 0.0f, 0.0f, 1.0f}}};
-
-        auto render_pass_info = VkRenderPassBeginInfo{
-            .sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            .renderPass        = render_pass,
-            .framebuffer       = swap_chain_framebuffers[image_index],
-            .renderArea.offset = {0, 0},
-            .renderArea.extent = swap_chain_extent,
-            .clearValueCount   = 1,
-            .pClearValues      = &clear_color,
-        };
-        vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-
-        vkCmdBindPipeline(buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-
-        auto viewport = VkViewport{
-            .x        = 0.0f,
-            .y        = 0.0f,
-            .width    = (f32)swap_chain_extent.width,
-            .height   = (f32)swap_chain_extent.height,
-            .minDepth = 0.0f,
-            .maxDepth = 1.0f,
-        };
-        vkCmdSetViewport(buffer, 0, 1, &viewport);
-
-        auto scissor = VkRect2D{
-            .offset = {0, 0},
-            .extent = swap_chain_extent,
-        };
-        vkCmdSetScissor(buffer, 0, 1, &scissor);
-
-        VkDeviceSize offsets[] = {0};
-        vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffer, offsets);
-        vkCmdBindIndexBuffer(buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
-        vkCmdDrawIndexed(buffer, (u32)indices.count, 1, 0, 0, 0);
-
-        // ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buffer);
-
-        vkCmdEndRenderPass(buffer);
+        app->frame(buffer, main_pass, main_pass_framebuffers[image_index], swap_chain_extent);
 
 #if EDITOR
         {
