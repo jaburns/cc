@@ -57,8 +57,6 @@ struct GfxWindow {
     AudioCallbackFn   audio_callback_fn;
     AudioPlayer       audio_player;
 
-    // ImGuiContext* imgui_context;
-
     SDL_JoystickID active_joystick_id;
     SDL_Joystick*  sdl_joystick;
     JoystickState  joystick;
@@ -69,16 +67,17 @@ struct GfxWindow {
     bool           mouse_button;
 
     void init(cchar* window_title, SDL_AudioCallback sdl_audio_callback);
+    void init_imgui();
     void create_swap_chain();
     bool poll();
     void swap();
     void wait_device_idle();
 };
 
-#define VKExpect(expr, msg)                                             \
-    do {                                                                \
-        VkResult result = (expr);                                       \
-        if (result != VK_SUCCESS) Panic("Error %d :: %s", result, msg); \
+#define VKExpect(expr)                                                                            \
+    do {                                                                                          \
+        VkResult result = (expr);                                                                 \
+        if (result != VK_SUCCESS) Panic("Vulkan API call '%s' returned error %d", #expr, result); \
     } while (0)
 
 template <typename T, auto Fn, typename... Args>
