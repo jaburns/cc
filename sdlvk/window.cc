@@ -41,11 +41,14 @@ struct Vertex {
     }
 };
 
-Array<Vertex, 3> vertices = Array<Vertex, 3>{{
-    {vec2(0.0f, -0.5f), vec3(1.0f, 0.0f, 1.0f)},
-    {vec2(0.5f, 0.5f), vec3(1.0f, 1.0f, 0.0f)},
-    {vec2(-0.5f, 0.5f), vec3(0.0f, 1.0f, 1.0f)},
+Array<Vertex, 4> vertices = {{
+    {vec2(-0.5f, -0.5f), vec3(1.0f, 0.0f, 0.0f)},
+    {vec2(0.5f, -0.5f), vec3(0.0f, 1.0f, 0.0f)},
+    {vec2(0.5f, 0.5f), vec3(0.0f, 0.0f, 1.0f)},
+    {vec2(-0.5f, 0.5f), vec3(1.0f, 1.0f, 1.0f)},
 }};
+
+Array<u16, 6> indices = {{0, 1, 2, 2, 3, 0}};
 
 template <typename T, auto Fn, typename... Args>
 Slice<T> vk_get_slice(Arena* arena, Args... args) {
@@ -82,6 +85,66 @@ u32 vk_find_memory_type(VkPhysicalDevice physical_device, u32 type_filter, VkMem
         }
     }
     Panic("vk_find_memory_type failed to find anything");
+}
+
+void vk_create_buffer(
+    VkDevice device, VkPhysicalDevice physical_device, VkDeviceSize size,
+    VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
+    VkBuffer* buffer, VkDeviceMemory* buffer_memory
+) {
+    auto vertex_buffer_info = VkBufferCreateInfo{
+        .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .size        = size,  // sizeof(Vertex) * vertices.count,
+        .usage       = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    VKExpect(vkCreateBuffer(device, &vertex_buffer_info, nullptr, buffer));
+
+    VkMemoryRequirements mem_requirements;
+    vkGetBufferMemoryRequirements(device, *buffer, &mem_requirements);
+
+    auto vertex_alloc_info = VkMemoryAllocateInfo{
+        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize  = mem_requirements.size,
+        .memoryTypeIndex = vk_find_memory_type(physical_device, mem_requirements.memoryTypeBits, properties),
+    };
+    VKExpect(vkAllocateMemory(device, &vertex_alloc_info, nullptr, buffer_memory));
+
+    vkBindBufferMemory(device, *buffer, *buffer_memory, 0);
+}
+
+void vk_copy_buffer(VkDevice device, VkQueue queue, VkCommandPool command_pool, VkBuffer dest, VkBuffer src, VkDeviceSize size) {
+    auto allocInfo = VkCommandBufferAllocateInfo{
+        .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandPool        = command_pool,
+        .commandBufferCount = 1,
+    };
+
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    VkBufferCopy copyRegion{};
+    copyRegion.size = size;
+    vkCmdCopyBuffer(commandBuffer, src, dest, 1, &copyRegion);
+
+    vkEndCommandBuffer(commandBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers    = &commandBuffer;
+
+    vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(queue);
+
+    vkFreeCommandBuffers(device, command_pool, 1, &commandBuffer);
 }
 
 void GfxWindow::create_swap_chain() {
@@ -372,8 +435,7 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
         vkGetDeviceQueue(device, present_queue_idx, 0, &present_queue);
 
         for (u32 i = 0; i < surface_formats.count; ++i) {
-            // if (surface_formats[i].format == VK_FORMAT_B8G8R8A8_UNORM && surface_formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            if (surface_formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surface_formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            if (surface_formats[i].format == VK_FORMAT_B8G8R8A8_UNORM && surface_formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
                 surface_format = surface_formats[i];
                 break;
             }
@@ -556,30 +618,65 @@ void GfxWindow::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) 
 
         // vertex buffer
         {
-            auto vertex_buffer_info = VkBufferCreateInfo{
-                .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                .size        = sizeof(Vertex) * vertices.count,
-                .usage       = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-            };
-            VKExpect(vkCreateBuffer(device, &vertex_buffer_info, nullptr, &vertex_buffer));
+            VkDeviceSize size = sizeof(Vertex) * vertices.count;
 
-            VkMemoryRequirements mem_requirements;
-            vkGetBufferMemoryRequirements(device, vertex_buffer, &mem_requirements);
+            VkBuffer       staging_buffer;
+            VkDeviceMemory staging_buffer_memory;
 
-            auto vertex_alloc_info = VkMemoryAllocateInfo{
-                .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                .allocationSize  = mem_requirements.size,
-                .memoryTypeIndex = vk_find_memory_type(physical_device, mem_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
-            };
-            VKExpect(vkAllocateMemory(device, &vertex_alloc_info, nullptr, &vertex_buffer_memory));
-
-            vkBindBufferMemory(device, vertex_buffer, vertex_buffer_memory, 0);
+            vk_create_buffer(
+                device, physical_device, size,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                &staging_buffer, &staging_buffer_memory
+            );
 
             void* data;
-            vkMapMemory(device, vertex_buffer_memory, 0, vertex_buffer_info.size, 0, &data);
-            memcpy(data, vertices.elems, vertex_buffer_info.size);
-            vkUnmapMemory(device, vertex_buffer_memory);
+            vkMapMemory(device, staging_buffer_memory, 0, size, 0, &data);
+            memcpy(data, vertices.elems, size);
+            vkUnmapMemory(device, staging_buffer_memory);
+
+            vk_create_buffer(
+                device, physical_device, size,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                &vertex_buffer, &vertex_buffer_memory
+            );
+
+            vk_copy_buffer(device, graphics_queue, command_pool, vertex_buffer, staging_buffer, size);
+
+            vkDestroyBuffer(device, staging_buffer, nullptr);
+            vkFreeMemory(device, staging_buffer_memory, nullptr);
+        }
+        // index buffer
+        {
+            VkDeviceSize size = sizeof(u16) * indices.count;
+
+            VkBuffer       staging_buffer;
+            VkDeviceMemory staging_buffer_memory;
+
+            vk_create_buffer(
+                device, physical_device, size,
+                VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                &staging_buffer, &staging_buffer_memory
+            );
+
+            void* data;
+            vkMapMemory(device, staging_buffer_memory, 0, size, 0, &data);
+            memcpy(data, indices.elems, size);
+            vkUnmapMemory(device, staging_buffer_memory);
+
+            vk_create_buffer(
+                device, physical_device, size,
+                VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                &index_buffer, &index_buffer_memory
+            );
+
+            vk_copy_buffer(device, graphics_queue, command_pool, index_buffer, staging_buffer, size);
+
+            vkDestroyBuffer(device, staging_buffer, nullptr);
+            vkFreeMemory(device, staging_buffer_memory, nullptr);
         }
 
         auto alloc_info = VkCommandBufferAllocateInfo{
@@ -844,8 +941,8 @@ top:
 
         VkDeviceSize offsets[] = {0};
         vkCmdBindVertexBuffers(buffer, 0, 1, &vertex_buffer, offsets);
-
-        vkCmdDraw(buffer, vertices.count, 1, 0, 0);
+        vkCmdBindIndexBuffer(buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+        vkCmdDrawIndexed(buffer, (u32)indices.count, 1, 0, 0, 0);
 
 #if EDITOR
         ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buffer);

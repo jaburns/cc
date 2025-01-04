@@ -52,6 +52,8 @@ struct GfxWindow {
 
     VkBuffer       vertex_buffer;
     VkDeviceMemory vertex_buffer_memory;
+    VkBuffer       index_buffer;
+    VkDeviceMemory index_buffer_memory;
 
     SDL_AudioDeviceID sdl_audio_device;
     AudioCallbackFn   audio_callback_fn;
