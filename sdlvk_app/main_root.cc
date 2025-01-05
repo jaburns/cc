@@ -40,7 +40,7 @@ end:
 
 i32 main() {
 #if EDITOR
-    void* handle = dlopen("bin/libgame.dylib", RTLD_LAZY);
+    void* handle = dlopen("bin/libreload.dylib", RTLD_LAZY);
     if (!handle) Panic("Error loading dylib: %s\n", dlerror());
     App*            (*app_create)(Gfx*, MemoryAllocator) = (App * (*)(Gfx*, MemoryAllocator)) dlsym(handle, "app_create");
     void            (*app_tick)(App*)                    = (void (*)(App*))dlsym(handle, "app_tick");
@@ -103,7 +103,7 @@ i32 main() {
                 app_freeze(app);
 
                 dlclose(handle);
-                handle     = dlopen("bin/libgame.dylib", RTLD_LAZY);
+                handle     = dlopen("bin/libreload.dylib", RTLD_LAZY);
                 app_create = NULL;
                 app_tick   = (void (*)(App*))dlsym(handle, "app_tick");
                 app_frame  = (void (*)(App*, f32))dlsym(handle, "app_frame");

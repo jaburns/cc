@@ -57,7 +57,11 @@ update_vscode_config() {
     } > .vscode/.env
 
     sed "s~^.*\"includePath\":.*$~\"includePath\": [\"$SDLSDK/include\", \"$VKSDK/include\"]~" \
-        .vscode/c_cpp_properties.template.json > .vscode/c_cpp_properties.json
+        jaburns_cc/sdlvk_app/vscode.c_cpp_properties.json > .vscode/c_cpp_properties.json
+
+    cp jaburns_cc/sdlvk_app/vscode.launch.json   .vscode/launch.json
+    cp jaburns_cc/sdlvk_app/vscode.settings.json .vscode/settings.json
+    cp jaburns_cc/sdlvk_app/vscode.tasks.json    .vscode/tasks.json
 }
 
 #-------------------------------------------------------------------------------
@@ -136,7 +140,7 @@ build_main() {
             jaburns_cc/sdlvk_app/main_dll.cc \
             -include-pch jaburns_cc/sdlvk/inc.pch \
             -bundle -fPIC -flat_namespace -undefined dynamic_lookup \
-            -o bin/libgame.dylib \
+            -o bin/libreload.dylib \
             -fcolor-diagnostics 2> >(tee /dev/stderr))"
 
         if [[ "$err" == *'precompiled header'* ||  "$err" == *'PCH file'*  ]]; then
@@ -161,7 +165,7 @@ build_main() {
     clang -std=c++20 $CARGS $link \
         jaburns_cc/sdlvk_app/main_root.cc \
         -include-pch jaburns_cc/sdlvk/inc.pch \
-        -o bin/game
+        -o bin/sdlvk_app
 }
 
 #-------------------------------------------------------------------------------
