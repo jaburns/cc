@@ -151,14 +151,14 @@ build_deps() {
 }
 
 build_pch() {
-    clang -std=c++20 $CARGS -x c++-header jaburns_cc/sdlvk/inc.hh -o jaburns_cc/sdlvk/inc.pch
+    clang -std=c++20 $CARGS -x c++-header jaburns_cc/sdlvk/inc.hh -o bin/jaburns_cc_sdlvk_inc.pch
 }
 
 build_main() {
     if [[ "$EDITOR" == 1 ]]; then
         local err="$(clang -std=c++20 $CARGS \
             jaburns_cc/sdlvk_app/main_dll.cc \
-            -include-pch jaburns_cc/sdlvk/inc.pch \
+            -include-pch bin/jaburns_cc_sdlvk_inc.pch \
             -bundle -fPIC -flat_namespace -undefined dynamic_lookup \
             -o bin/libreload.dylib \
             -fcolor-diagnostics 2> >(tee /dev/stderr))"
@@ -184,7 +184,7 @@ build_main() {
 
     clang -std=c++20 $CARGS $link \
         jaburns_cc/sdlvk_app/main_root.cc \
-        -include-pch jaburns_cc/sdlvk/inc.pch \
+        -include-pch bin/jaburns_cc_sdlvk_inc.pch \
         -o bin/sdlvk_app
 }
 
