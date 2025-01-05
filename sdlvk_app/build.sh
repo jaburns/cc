@@ -17,6 +17,10 @@ read_config_ini() {
     local val="$(cat config.ini | grep "$1\\s*=" | sed 's/;.*//' | sed 's/^.*=//')"
     val="${val#"${val%%[![:space:]]*}"}"
     val="${val%"${val##*[![:space:]]}"}"
+    if [[ -z "$val" ]]; then
+        >&2 echo "Missing key '$1' in config.ini"
+        exit 1
+    fi
     printf '%s' "$val"
 }
 
@@ -27,6 +31,9 @@ DEBUG="$(read_config_ini debug)"
 EDITOR="$(read_config_ini editor)"
 TEST="$(read_config_ini test)"
 VERIFY="$(read_config_ini verify)"
+
+VKSDK="$(read_config_ini vulkan_sdk)"
+SDLSDK="$(read_config_ini sdl2_sdk)"
 
 #-------------------------------------------------------------------------------
 
@@ -73,9 +80,6 @@ build_shader() {
 }
 
 #-------------------------------------------------------------------------------
-
-VKSDK="$(read_config_ini vulkan_sdk)"
-SDLSDK="$(read_config_ini sdl2_sdk)"
 
 CARGS="
     -DDEBUG=$DEBUG
