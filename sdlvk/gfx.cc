@@ -91,9 +91,6 @@ void Gfx::create_swap_chain() {
         VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &main_pass_framebuffers[i]));
     }
 
-    log(screen_size);
-    log(extent.width, extent.height);
-
 #if EDITOR
     imgui_framebuffers.count = swap_chain_image_views.count;
     for (u32 i = 0; i < imgui_framebuffers.count; ++i) {
