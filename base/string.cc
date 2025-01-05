@@ -88,6 +88,10 @@ Str Str::from_cstr(cchar* cstr) {
     return ret;
 }
 
+Str Str::from_nullable_cstr(cchar* nullable_cstr) {
+    return nullable_cstr == nullptr ? Str{} : Str::from_cstr(nullable_cstr);
+}
+
 char* Str::to_cstr(Arena* arena) {
     char* ret = arena->alloc_many<char>(count + 1).elems;
     memcpy(ret, elems, count);

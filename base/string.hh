@@ -45,6 +45,7 @@ struct Str {
 
     static Str from_ptr(cchar* elems, usize count);
     static Str from_cstr(cchar* cstr);
+    static Str from_nullable_cstr(cchar* nullable_cstr);
     char*      to_cstr(Arena* arena);
     bool       eq_cstr(cchar* cstr);
     bool       eq(Str other);

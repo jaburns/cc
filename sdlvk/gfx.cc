@@ -333,7 +333,7 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
             }
         }
     }
-    // create render pass
+    // create main render pass
     {
         auto color_attachment = VkAttachmentDescription{
             .format         = surface_format.format,
@@ -343,7 +343,7 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
             .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
         };
         auto color_attachment_ref = VkAttachmentReference{
             .attachment = 0,
@@ -413,7 +413,7 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
             .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
             .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .initialLayout  = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
         };
         auto color_attachment_ref = VkAttachmentReference{
