@@ -73,10 +73,26 @@ update_vscode_config() {
 
 #-------------------------------------------------------------------------------
 
-build_shader() {
-    if [[ "shaders/${1}.slang" -nt "shaders/bin/${1}.${2}.spv" ]]; then
-        "$VKSDK/bin/slangc" -target spirv -profile spirv_1_3 -entry "${2}_main" "shaders/${1}.slang" -o "shaders/bin/${1}.${2}.spv"
-    fi
+build_shaders() {
+    [[ ! -d "assets/shaders" ]] && return
+    mkdir -p assets/shaders/bin
+
+    for shader in $(ls -l1 assets/shaders/*.slang); do
+        local name="$(basename -- "$shader")"
+        name="${name%.*}"
+
+        local entrypoints="$(
+            grep '^\[shader(".*")\]$' "$shader" -A 1 \
+            | grep -v '^\[shader(".*")\]$' \
+            | grep -v '^--$' \
+            | sed 's/^.* //;s/(.*$//' \
+        )"
+        for entry in $entrypoints; do
+            if [[ "assets/shaders/${name}.slang" -nt "assets/shaders/bin/${name}.${entry}.spv" ]]; then
+                "$VKSDK/bin/slangc" -target spirv -profile spirv_1_3 -entry "${entry}" "assets/shaders/${name}.slang" -o "assets/shaders/bin/${name}.${entry}.spv"
+            fi
+        done
+    done
 }
 
 #-------------------------------------------------------------------------------
@@ -175,12 +191,9 @@ build_main() {
 #-------------------------------------------------------------------------------
 
 mkdir -p bin
-mkdir -p shaders/bin
 mkdir -p .vscode
 
-build_shader triangle vertex
-build_shader triangle fragment
-
+build_shaders
 [[ "$SHADERS_ONLY" == 1 ]] && exit 0
 
 [[ "$VERIFY" == 1 ]] && verify_includes
