@@ -56,17 +56,19 @@ class Gfx {
 
     InlineVec<VkImage, MAX_SWAP_CHAIN_IMAGES>       swap_chain_images;
     InlineVec<VkImageView, MAX_SWAP_CHAIN_IMAGES>   swap_chain_image_views;
-    InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> imgui_framebuffers;
     InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> main_pass_framebuffers;
-
-    VkRenderPass imgui_render_pass;
-    u32          cur_framebuffer_idx;
-    bool         framebuffer_resized;
+#if EDITOR
+    VkRenderPass                                    imgui_render_pass;
+    InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> imgui_framebuffers;
+#endif
 
     Array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> command_buffers;
     Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     image_available_semaphores;
     Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     render_finished_semaphores;
     Array<VkFence, MAX_FRAMES_IN_FLIGHT>         in_flight_fences;
+
+    u32  cur_framebuffer_idx;
+    bool framebuffer_resized;
 
   public:
     VkInstance         instance;

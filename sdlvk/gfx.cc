@@ -10,9 +10,11 @@ void Gfx::create_swap_chain() {
         for (usize i = 0; i < main_pass_framebuffers.count; ++i) {
             vkDestroyFramebuffer(device, main_pass_framebuffers[i], nullptr);
         }
+#if EDITOR
         for (usize i = 0; i < imgui_framebuffers.count; ++i) {
             vkDestroyFramebuffer(device, imgui_framebuffers[i], nullptr);
         }
+#endif
         for (usize i = 0; i < swap_chain_image_views.count; ++i) {
             vkDestroyImageView(device, swap_chain_image_views[i], nullptr);
         }
@@ -88,6 +90,7 @@ void Gfx::create_swap_chain() {
         VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &main_pass_framebuffers[i]));
     }
 
+#if EDITOR
     imgui_framebuffers.count = swap_chain_image_views.count;
     for (u32 i = 0; i < imgui_framebuffers.count; ++i) {
         VkImageView attachments[] = {
@@ -104,6 +107,7 @@ void Gfx::create_swap_chain() {
         };
         VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &imgui_framebuffers[i]));
     }
+#endif
 }
 
 // -----------------------------------------------------------------------------
@@ -369,48 +373,7 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
         };
         VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &main_pass));
     }
-    // imgui render pass
-    {
-        VkAttachmentDescription color_attachment{
-            .format         = surface_format.format,
-            .samples        = VK_SAMPLE_COUNT_1_BIT,
-            .loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD,
-            .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
-            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-            .initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        };
-        VkAttachmentReference color_attachment_ref{
-            .attachment = 0,
-            .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
-        };
-        VkSubpassDescription subpass{
-            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount = 1,
-            .pColorAttachments    = &color_attachment_ref,
-        };
-        VkSubpassDependency dependency{
-            .srcSubpass    = VK_SUBPASS_EXTERNAL,
-            .dstSubpass    = 0,
-            .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-        };
-
-        VkRenderPassCreateInfo render_pass_info{
-            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-            .attachmentCount = 1,
-            .pAttachments    = &color_attachment,
-            .subpassCount    = 1,
-            .pSubpasses      = &subpass,
-            .dependencyCount = 1,
-            .pDependencies   = &dependency,
-        };
-
-        VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &imgui_render_pass));
-    }
+    // create command pool and presentation sync objects
     {
         auto pool_info = VkCommandPoolCreateInfo{
             .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -441,7 +404,46 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
         }
     }
 #if EDITOR
+    // create imgui renderpass and init imgui
     {
+        auto color_attachment = VkAttachmentDescription{
+            .format         = surface_format.format,
+            .samples        = VK_SAMPLE_COUNT_1_BIT,
+            .loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD,
+            .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout  = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        };
+        auto color_attachment_ref = VkAttachmentReference{
+            .attachment = 0,
+            .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+        };
+        auto subpass = VkSubpassDescription{
+            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
+            .colorAttachmentCount = 1,
+            .pColorAttachments    = &color_attachment_ref,
+        };
+        auto dependency = VkSubpassDependency{
+            .srcSubpass    = VK_SUBPASS_EXTERNAL,
+            .dstSubpass    = 0,
+            .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+        };
+        auto render_pass_info = VkRenderPassCreateInfo{
+            .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+            .attachmentCount = 1,
+            .pAttachments    = &color_attachment,
+            .subpassCount    = 1,
+            .pSubpasses      = &subpass,
+            .dependencyCount = 1,
+            .pDependencies   = &dependency,
+        };
+        VKExpect(vkCreateRenderPass(device, &render_pass_info, nullptr, &imgui_render_pass));
+
         ImGui::CreateContext();
         ImGui_ImplSDL2_InitForVulkan(sdl_window);
 
