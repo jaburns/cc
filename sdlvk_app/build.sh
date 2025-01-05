@@ -120,7 +120,7 @@ build_dep_obj() {
 
 build_deps() {
     build_dep_obj bin/any_vendor.o           jaburns_cc/vendor/vendor_impl.c               -std=c11
-    build_dep_obj bin/ed_watchfs.o           jaburns_cc/vendor/watchfs.c                   -std=c11
+    build_dep_obj bin/ed_watch_fs.o          jaburns_cc/sdlvk_app/watch_fs.c               -std=c11
     build_dep_obj bin/ed_imgui.o             jaburns_cc/vendor/imgui/imgui.cpp             -std=c++20 "-I$VKSDK/include" "-I$SDLSDK/include"
     build_dep_obj bin/ed_imgui_impl_sdl2.o   jaburns_cc/vendor/imgui/imgui_impl_sdl2.cpp   -std=c++20 "-I$VKSDK/include" "-I$SDLSDK/include"
     build_dep_obj bin/ed_imgui_impl_vulkan.o jaburns_cc/vendor/imgui/imgui_impl_vulkan.cpp -std=c++20 "-I$VKSDK/include" "-I$SDLSDK/include"

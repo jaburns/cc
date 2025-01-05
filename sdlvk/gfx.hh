@@ -35,7 +35,6 @@ class Gfx {
     struct Frame {
         VkCommandBuffer cmd_buffer;
         VkFramebuffer   framebuffer;
-        VkExtent2D      extent;
         u32             image_index;
     };
 
@@ -52,7 +51,6 @@ class Gfx {
     VkQueue        present_queue;
     VkSurfaceKHR   surface;
     VkSwapchainKHR swap_chain;
-    VkExtent2D     swap_chain_extent;
 
     InlineVec<VkImage, MAX_SWAP_CHAIN_IMAGES>       swap_chain_images;
     InlineVec<VkImageView, MAX_SWAP_CHAIN_IMAGES>   swap_chain_image_views;
@@ -79,15 +77,16 @@ class Gfx {
     VkCommandPool      command_pool;
     VkRenderPass       main_pass;
     Frame              frame;
+    ivec2              screen_size;
 
     AudioPlayer     audio_player;
     AudioCallbackFn audio_callback_fn;
-    JoystickState   joystick;
-    KeyboardState   keyboard;
-    ivec2           screen_size;
-    ivec2           mouse_delta;
-    f32             mouse_delta_wheel;
-    bool            mouse_button;
+
+    JoystickState joystick;
+    KeyboardState keyboard;
+    ivec2         mouse_delta;
+    f32           mouse_delta_wheel;
+    bool          mouse_button;
 
     void init(cchar* window_title, SDL_AudioCallback sdl_audio_callback);
     bool poll();

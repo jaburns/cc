@@ -1,7 +1,7 @@
 #if EDITOR
 #include <dlfcn.h>
 #include "../../src/main.hh"
-#include "../vendor/watchfs.h"
+#include "watch_fs.h"
 #include "../sdlvk/inc.cc"
 #else
 #include "main_dll.cc"
@@ -50,7 +50,7 @@ i32 main() {
 
 #if EDITOR
     cchar* watch_paths[] = APP_RELOAD_WATCH_DIRS;
-    watchfs_create(watch_paths, RawArrayLen(watch_paths));
+    watch_fs_create(watch_paths, RawArrayLen(watch_paths));
 #endif
 
     timing_global_init();
@@ -58,7 +58,7 @@ i32 main() {
     *can_do_audio = true;
 
     Gfx gfx;
-    gfx.init("vkaizo", audio_callback_trampoline);
+    gfx.init(APP_WINDOW_TITLE, audio_callback_trampoline);
 
     Arena arena           = Arena::create(memory_get_global_allocator(), 0);
     gfx.audio_player      = AudioPlayer::alloc(&arena);
@@ -92,7 +92,7 @@ i32 main() {
         gfx.end_frame();
 
 #if EDITOR
-        Str changed_path = Str::from_nullable_cstr(watchfs_check_file_changed());
+        Str changed_path = Str::from_nullable_cstr(watch_fs_check_file_changed());
         if (changed_path.count > 0) {
             Str    suffix  = changed_path.trim().after_last_index('.');
             cchar* command = nullptr;
@@ -122,7 +122,7 @@ i32 main() {
 
                 *can_do_audio = true;
 
-                watchfs_check_file_changed();
+                watch_fs_check_file_changed();
             }
         }
 #endif
@@ -134,7 +134,7 @@ i32 main() {
     while (*inside_audio);
 
 #if EDITOR
-    watchfs_destroy();
+    watch_fs_destroy();
 #endif
 
     return 0;

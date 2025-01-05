@@ -54,7 +54,8 @@ void Gfx::create_swap_chain() {
     };
     VKExpect(vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain));
 
-    swap_chain_extent = extent;
+    screen_size.x = extent.width;
+    screen_size.y = extent.height;
     vk_get_vec<vkGetSwapchainImagesKHR>(&swap_chain_images, device, swap_chain);
 
     swap_chain_image_views.count = swap_chain_images.count;
@@ -90,6 +91,9 @@ void Gfx::create_swap_chain() {
         VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &main_pass_framebuffers[i]));
     }
 
+    log(screen_size);
+    log(extent.width, extent.height);
+
 #if EDITOR
     imgui_framebuffers.count = swap_chain_image_views.count;
     for (u32 i = 0; i < imgui_framebuffers.count; ++i) {
@@ -101,8 +105,8 @@ void Gfx::create_swap_chain() {
             .renderPass      = imgui_render_pass,
             .attachmentCount = 1,
             .pAttachments    = attachments,
-            .width           = swap_chain_extent.width,
-            .height          = swap_chain_extent.height,
+            .width           = extent.width,
+            .height          = extent.height,
             .layers          = 1,
         };
         VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &imgui_framebuffers[i]));
@@ -515,10 +519,6 @@ bool Gfx::poll() {
                 switch (event.window.event) {
                     case SDL_WINDOWEVENT_RESIZED: {
                         framebuffer_resized = true;
-                        // i32 w         = event.window.data1;
-                        // i32 h         = event.window.data2;
-                        // screen_size.x = w;
-                        // screen_size.y = h;
                         break;
                     }
                 }
@@ -653,7 +653,6 @@ top:
     frame = {
         .cmd_buffer  = buffer,
         .framebuffer = main_pass_framebuffers[image_index],
-        .extent      = swap_chain_extent,
         .image_index = image_index,
     };
 }
@@ -662,11 +661,13 @@ void Gfx::end_frame() {
 #if EDITOR
     ImGui::Render();
 
+    VkExtent2D extent = {(u32)screen_size.x, (u32)screen_size.y};
+
     auto imgui_rp_begin = VkRenderPassBeginInfo{
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass      = imgui_render_pass,
         .framebuffer     = imgui_framebuffers[frame.image_index],
-        .renderArea      = {{0, 0}, swap_chain_extent},
+        .renderArea      = {{0, 0}, extent},
         .clearValueCount = 0,
         .pClearValues    = nullptr,
     };
