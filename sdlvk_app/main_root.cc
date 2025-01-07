@@ -6,11 +6,24 @@
 #else
 #include "main_dll.cc"
 #endif
+namespace {
 
-static global AtomicVal<bool> can_do_audio = {false};
-static global AtomicVal<bool> inside_audio = {false};
+#if EDITOR
+global AtomicVal<bool> rebuild_running   = {false};
+global AtomicVal<bool> rebuild_succeeded = {false};
+global pthread_t       rebuild_thread    = nullptr;
 
-static void audio_callback_trampoline(void* data, u8* out_stream, i32 out_stream_byte_len) {
+void* rebuild_thread_fn(void* data) {
+    *rebuild_succeeded = system((cchar*)data) == 0;
+    *rebuild_running   = false;
+    return nullptr;
+}
+#endif
+
+global AtomicVal<bool> can_do_audio = {false};
+global AtomicVal<bool> inside_audio = {false};
+
+void audio_callback_trampoline(void* data, u8* out_stream, i32 out_stream_byte_len) {
     Gfx* gfx    = {};
     f32* out    = {};
     i32  length = {};
@@ -36,33 +49,7 @@ end:
     *inside_audio = false;
 }
 
-static AtomicVal<bool> rebuild_running   = {false};
-static AtomicVal<bool> rebuild_succeeded = {false};
-static pthread_t       rebuild_thread;
-
-static void* rebuild_thread_fn(void* data) {
-    cchar* command = (cchar*)data;
-    u32    result  = system(command);
-    if (result == 0) {
-        *rebuild_succeeded = true;
-    }
-    *rebuild_running = false;
-    return nullptr;
-}
-
-void rebuild(cchar* command) {
-    if (*rebuild_running) return;
-    *rebuild_running = true;
-    pthread_create(&rebuild_thread, nullptr, rebuild_thread_fn, (void*)command);
-}
-
-bool check_rebuild() {
-    if (*rebuild_succeeded) {
-        *rebuild_succeeded = false;
-        return true;
-    }
-    return false;
-}
+}  // namespace
 
 i32 main() {
 #if EDITOR
@@ -74,13 +61,10 @@ i32 main() {
     AudioCallbackFn (*app_get_audio_callback_fn)(void) = (AudioCallbackFn(*)(void))dlsym(handle, "app_get_audio_callback_fn");
     void            (*app_freeze)(App*)                = (void (*)(App*))dlsym(handle, "app_freeze");
     void            (*app_thaw)(App*)                  = NULL;
-#endif
 
-#if EDITOR
     cchar* watch_paths[] = APP_RELOAD_WATCH_DIRS;
     watch_fs_create(watch_paths, RawArrayLen(watch_paths));
 #endif
-
     timing_global_init();
 
     *can_do_audio = true;
@@ -91,6 +75,13 @@ i32 main() {
     Arena arena           = Arena::create(memory_get_global_allocator(), 0);
     gfx.audio_player      = AudioPlayer::alloc(&arena);
     gfx.audio_callback_fn = app_get_audio_callback_fn();
+
+    {
+        vec2 a = vec2(1, 2);
+        vec2 b = vec2(3, 4);
+        f32  c = a.distance(b) * b.normalize().cross(a.normalize());
+        println(c);
+    }
 
     App* app = arena.alloc_one<App>();
     app_init(app, &gfx, arena);
@@ -119,21 +110,25 @@ i32 main() {
         gfx.end_frame();
 
 #if EDITOR
-        Str changed_path = Str::from_nullable_cstr(watch_fs_check_file_changed());
-        if (changed_path.count > 0) {
-            Str    suffix  = changed_path.trim().after_last_index('.');
-            cchar* command = nullptr;
-            if (suffix.eq_cstr("slang")) {
-                command = "jaburns_cc/sdlvk_app/build.sh --shaders-only";
-            } else if (suffix.eq_cstr("cc") || suffix.eq_cstr("hh") || suffix.eq_cstr("c") || suffix.eq_cstr("h")) {
-                command = "jaburns_cc/sdlvk_app/build.sh --dll-only";
-            }
-            if (command) {
-                rebuild(command);
+        if (!*rebuild_running) {
+            Str changed_path = Str::from_nullable_cstr(watch_fs_check_file_changed());
+            if (changed_path.count > 0) {
+                Str    suffix = changed_path.trim().after_last_index('.');
+                cchar* cmd    = nullptr;
+                if (suffix.eq_cstr("slang")) {
+                    cmd = "jaburns_cc/sdlvk_app/build.sh --shaders-only";
+                } else if (suffix.eq_cstr("cc") || suffix.eq_cstr("hh") || suffix.eq_cstr("c") || suffix.eq_cstr("h")) {
+                    cmd = "jaburns_cc/sdlvk_app/build.sh --dll-only";
+                }
+                if (cmd) {
+                    *rebuild_running = true;
+                    pthread_create(&rebuild_thread, nullptr, rebuild_thread_fn, (void*)cmd);
+                }
             }
         }
+        if (*rebuild_succeeded) {
+            *rebuild_succeeded = false;
 
-        if (check_rebuild()) {
             *can_do_audio = false;
             while (*inside_audio);
 
@@ -166,6 +161,7 @@ i32 main() {
 
 #if EDITOR
     watch_fs_destroy();
+    if (rebuild_thread) pthread_join(rebuild_thread, nullptr);
 #endif
 
     return 0;

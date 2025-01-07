@@ -15,8 +15,6 @@ struct mat4;
 
 // -----------------------------------------------------------------------------
 
-// TODO(jaburns) check that this* gets optimized away for these types and Str
-
 struct vec2 {
     union {
         struct {
