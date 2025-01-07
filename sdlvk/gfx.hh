@@ -31,18 +31,19 @@ class VKDropPool {
 };
 
 class Gfx {
+    static constexpr bool  ENABLE_VALIDATION_LAYERS = (bool)DEBUG;
+    static constexpr usize MAX_SWAP_CHAIN_IMAGES    = 4;
+
   public:
+    static constexpr usize MAX_FRAMES_IN_FLIGHT = 2;
+
     struct Frame {
         VkCommandBuffer cmd_buffer;
         VkFramebuffer   framebuffer;
-        u32             image_index;
+        u32             framebuffer_index;
     };
 
   private:
-    static constexpr bool  ENABLE_VALIDATION_LAYERS = (bool)DEBUG;
-    static constexpr usize MAX_FRAMES_IN_FLIGHT     = 2;
-    static constexpr usize MAX_SWAP_CHAIN_IMAGES    = 4;
-
     SDL_Window*       sdl_window;
     SDL_AudioDeviceID sdl_audio_device;
     SDL_JoystickID    active_joystick_id;
@@ -65,6 +66,7 @@ class Gfx {
     Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     render_finished_semaphores;
     Array<VkFence, MAX_FRAMES_IN_FLIGHT>         in_flight_fences;
 
+    u32  cur_image_idx;
     u32  cur_framebuffer_idx;
     bool framebuffer_resized;
 
@@ -95,7 +97,13 @@ class Gfx {
     void wait_safe_quit();
 
     void vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkBuffer* out_buffer, VkDeviceMemory* out_buffer_memory);
-    void vk_copy_buffer(VkQueue queue, VkBuffer dest, VkBuffer src, VkDeviceSize size);
+    void vk_create_image(u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkImage* out_image, VkDeviceMemory* out_image_memory);
+    void vk_copy_buffer(VkBuffer dest, VkBuffer src, VkDeviceSize size);
+    void vk_copy_buffer_to_image(VkImage dest, VkBuffer src, u32 width, u32 height);
+    void vk_transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
+
+    VkCommandBuffer vk_one_shot_command_buffer_begin();
+    void            vk_one_shot_command_buffer_submit(VkCommandBuffer cmd_buffer);
 
   private:
     void create_swap_chain();

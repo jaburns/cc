@@ -77,8 +77,10 @@ u64 operator""_gb(u64 n) { return n << 30; }
 
 #define Unimplemented() Panic("Unimplemented!")
 
-#define ZeroStruct(struct_ptr)      (decltype(struct_ptr))memset((struct_ptr), 0, sizeof(*(struct_ptr)))
-#define ZeroArray(array_ptr, count) memset((array_ptr), 0, (count) * sizeof((array_ptr)[0]))
+#define ZeroStruct(struct_ptr)            (decltype(struct_ptr))memset((struct_ptr), 0, sizeof(*(struct_ptr)))
+#define CopyStruct(dest_ptr, struct_ptr)  (decltype(struct_ptr))memcpy((dest_ptr), (struct_ptr), sizeof(*(struct_ptr)))
+#define ZeroArray(array, count)           memset((array), 0, (count) * sizeof((array)[0]))
+#define CopyArray(dest_ptr, array, count) memcpy((dest_ptr), (array), (count) * sizeof((array)[0]))
 
 #define X_forall_dispatch(_1, _2, _3, _4, name, ...) \
     name
@@ -98,7 +100,9 @@ u64 operator""_gb(u64 n) { return n << 30; }
 #define no_sanitize_overflow
 #endif
 
-no_sanitize_overflow u32 wrapped_add(u32 a, u32 b) { return a + b; }
+no_sanitize_overflow u32 wrapped_add(u32 a, u32 b) {
+    return a + b;
+}
 no_sanitize_overflow u32 wrapped_mul(u32 a, u32 b) { return a * b; }
 no_sanitize_overflow u64 wrapped_add(u64 a, u64 b) { return a + b; }
 no_sanitize_overflow u64 wrapped_mul(u64 a, u64 b) { return a * b; }
@@ -110,6 +114,15 @@ struct NoCopy {
     NoCopy(NoCopy&&)                 = delete;
     NoCopy& operator=(NoCopy&&)      = delete;
 };
+
+forall(Fn) class X_Defer : Fn, NoCopy {
+  public:
+    X_Defer(Fn fn) : Fn(fn) {}
+    ~X_Defer() { Fn::operator()(); }
+};
+#define x_defer_1(x, y, z) x##y##z
+#define x_defer_0(line)    X_Defer x_defer_1(x__, line, __auto_drop) = [&](void) -> void
+#define defer              x_defer_0(__LINE__)
 
 forall(T) struct AtomicVal {
     T unsafe_inner;

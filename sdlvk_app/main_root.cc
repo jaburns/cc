@@ -7,10 +7,10 @@
 #include "main_dll.cc"
 #endif
 
-global AtomicVal<bool> can_do_audio = {false};
-global AtomicVal<bool> inside_audio = {false};
+static global AtomicVal<bool> can_do_audio = {false};
+static global AtomicVal<bool> inside_audio = {false};
 
-void audio_callback_trampoline(void* data, u8* out_stream, i32 out_stream_byte_len) {
+static void audio_callback_trampoline(void* data, u8* out_stream, i32 out_stream_byte_len) {
     Gfx* gfx    = {};
     f32* out    = {};
     i32  length = {};
@@ -36,13 +36,41 @@ end:
     *inside_audio = false;
 }
 
+static AtomicVal<bool> rebuild_running   = {false};
+static AtomicVal<bool> rebuild_succeeded = {false};
+static pthread_t       rebuild_thread;
+
+static void* rebuild_thread_fn(void* data) {
+    cchar* command = (cchar*)data;
+    u32    result  = system(command);
+    if (result == 0) {
+        *rebuild_succeeded = true;
+    }
+    *rebuild_running = false;
+    return nullptr;
+}
+
+void rebuild(cchar* command) {
+    if (*rebuild_running) return;
+    *rebuild_running = true;
+    pthread_create(&rebuild_thread, nullptr, rebuild_thread_fn, (void*)command);
+}
+
+bool check_rebuild() {
+    if (*rebuild_succeeded) {
+        *rebuild_succeeded = false;
+        return true;
+    }
+    return false;
+}
+
 i32 main() {
 #if EDITOR
     void* handle = dlopen("bin/libreload.dylib", RTLD_LAZY);
     if (!handle) Panic("Error loading dylib: %s\n", dlerror());
     void            (*app_init)(App*, Gfx*, Arena)     = (void (*)(App*, Gfx*, Arena))dlsym(handle, "app_init");
     void            (*app_tick)(App*)                  = (void (*)(App*))dlsym(handle, "app_tick");
-    void            (*app_frame)(App*, f32)            = (void (*)(App*, f32))dlsym(handle, "app_frame");
+    void            (*app_frame)(App*, f64, f32, f32)  = (void (*)(App*, f64, f32, f32))dlsym(handle, "app_frame");
     AudioCallbackFn (*app_get_audio_callback_fn)(void) = (AudioCallbackFn(*)(void))dlsym(handle, "app_get_audio_callback_fn");
     void            (*app_freeze)(App*)                = (void (*)(App*))dlsym(handle, "app_freeze");
     void            (*app_thaw)(App*)                  = NULL;
@@ -67,7 +95,8 @@ i32 main() {
     App* app = arena.alloc_one<App>();
     app_init(app, &gfx, arena);
 
-    u64 last_ticks     = timing_get_ticks();
+    u64 first_ticks    = timing_get_ticks();
+    u64 last_ticks     = first_ticks;
     u64 tick_acc_nanos = 0;
 
     while (gfx.poll()) {
@@ -81,14 +110,12 @@ i32 main() {
             app_tick(app);
         }
 
-        f32 tick_lerp = (f32)((f64)tick_acc_nanos / (f64)APP_NANOS_PER_TICK);
-
-#if EDITOR
-        ImGui::ShowDemoWindow();
-#endif
+        f32 tick_lerp  = (f32)((f64)tick_acc_nanos / (f64)APP_NANOS_PER_TICK);
+        f32 delta_time = (f32)((f64)timing_ticks_to_nanos(delta_ticks) / 1'000'000'000.);
+        f64 time       = (f64)(timing_ticks_to_nanos(timing_get_ticks() - first_ticks) / 1000) / 1'000'000.;
 
         gfx.begin_frame();
-        app_frame(app, tick_lerp);
+        app_frame(app, time, delta_time, tick_lerp);
         gfx.end_frame();
 
 #if EDITOR
@@ -101,29 +128,33 @@ i32 main() {
             } else if (suffix.eq_cstr("cc") || suffix.eq_cstr("hh") || suffix.eq_cstr("c") || suffix.eq_cstr("h")) {
                 command = "jaburns_cc/sdlvk_app/build.sh --dll-only";
             }
-            if (command && 0 == system(command)) {
-                *can_do_audio = false;
-                while (*inside_audio);
-
-                gfx.audio_callback_fn = nullptr;
-                app_freeze(app);
-
-                dlclose(handle);
-                handle                    = dlopen("bin/libreload.dylib", RTLD_LAZY);
-                app_init                  = NULL;
-                app_tick                  = (void (*)(App*))dlsym(handle, "app_tick");
-                app_frame                 = (void (*)(App*, f32))dlsym(handle, "app_frame");
-                app_get_audio_callback_fn = (AudioCallbackFn(*)(void))dlsym(handle, "app_get_audio_callback_fn");
-                app_freeze                = (void (*)(App*))dlsym(handle, "app_freeze");
-                app_thaw                  = (void (*)(App*))dlsym(handle, "app_thaw");
-
-                gfx.audio_callback_fn = app_get_audio_callback_fn();
-                app_thaw(app);
-
-                *can_do_audio = true;
-
-                watch_fs_check_file_changed();
+            if (command) {
+                rebuild(command);
             }
+        }
+
+        if (check_rebuild()) {
+            *can_do_audio = false;
+            while (*inside_audio);
+
+            gfx.audio_callback_fn = nullptr;
+            app_freeze(app);
+
+            dlclose(handle);
+            handle                    = dlopen("bin/libreload.dylib", RTLD_LAZY);
+            app_init                  = NULL;
+            app_tick                  = (void (*)(App*))dlsym(handle, "app_tick");
+            app_frame                 = (void (*)(App*, f64, f32, f32))dlsym(handle, "app_frame");
+            app_get_audio_callback_fn = (AudioCallbackFn(*)(void))dlsym(handle, "app_get_audio_callback_fn");
+            app_freeze                = (void (*)(App*))dlsym(handle, "app_freeze");
+            app_thaw                  = (void (*)(App*))dlsym(handle, "app_thaw");
+
+            gfx.audio_callback_fn = app_get_audio_callback_fn();
+            app_thaw(app);
+
+            *can_do_audio = true;
+
+            watch_fs_check_file_changed();
         }
 #endif
     }

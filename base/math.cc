@@ -117,9 +117,11 @@ vec2& operator/=(vec2& lhs, f32 rhs) {
 }
 
 void print_value(Vec<char>* out, vec2 v) {
+    print_value(out, '[');
     print_value(out, v.x);
     print_value(out, ',');
     print_value(out, v.y);
+    print_value(out, ']');
 }
 
 // -----------------------------------------------------------------------------
@@ -182,9 +184,11 @@ ivec2& operator*=(ivec2& lhs, i32 rhs) {
 }
 
 void print_value(Vec<char>* out, ivec2 v) {
+    print_value(out, '[');
     print_value(out, v.x);
     print_value(out, ',');
     print_value(out, v.y);
+    print_value(out, ']');
 }
 
 // -----------------------------------------------------------------------------
@@ -196,6 +200,14 @@ vec3a vec3::to_vec3a() {
 
 f32 vec3a::dot(vec3a rhs) {
     return f32x4_add_across(f32x4_mul(vector, rhs.vector));
+}
+vec3a vec3a::cross(vec3a rhs) {
+    // TODO(jaburns) simd
+    return vec3a(
+        y * rhs.z - rhs.y * z,
+        z * rhs.x - rhs.z * x,
+        x * rhs.y - rhs.x * y
+    );
 }
 vec3a vec3a::normalize() {
     f32 len = sqrtf(f32x4_add_across(f32x4_mul(vector, vector)));
@@ -244,18 +256,22 @@ vec3a& operator/=(vec3a& lhs, f32 rhs) {
 }
 
 void print_value(Vec<char>* out, vec3 v) {
+    print_value(out, '[');
     print_value(out, v.x);
     print_value(out, ',');
     print_value(out, v.y);
     print_value(out, ',');
     print_value(out, v.z);
+    print_value(out, ']');
 }
 void print_value(Vec<char>* out, vec3a v) {
+    print_value(out, '[');
     print_value(out, v.x);
     print_value(out, ',');
     print_value(out, v.y);
     print_value(out, ',');
     print_value(out, v.z);
+    print_value(out, ']');
 }
 
 // -----------------------------------------------------------------------------
@@ -299,6 +315,7 @@ vec4& operator/=(vec4& lhs, f32 rhs) {
 }
 
 void print_value(Vec<char>* out, vec4 v) {
+    print_value(out, '[');
     print_value(out, v.x);
     print_value(out, ',');
     print_value(out, v.y);
@@ -306,6 +323,7 @@ void print_value(Vec<char>* out, vec4 v) {
     print_value(out, v.z);
     print_value(out, ',');
     print_value(out, v.w);
+    print_value(out, ']');
 }
 
 // -----------------------------------------------------------------------------
@@ -345,9 +363,11 @@ vec2 operator*(mat2& lhs, vec2 rhs) {
 }
 
 void print_value(Vec<char>* out, mat2 m) {
+    print_value(out, '[');
     print_value(out, m.a);
     print_value(out, ',');
     print_value(out, m.b);
+    print_value(out, ']');
 }
 
 // -----------------------------------------------------------------------------
@@ -361,22 +381,34 @@ mat4& mat4::mk_identity() {
     return *this;
 }
 
-mat4& mat4::mk_ortho(f32 left, f32 right, f32 bottom, f32 top, f32 nearZ, f32 farZ) {
+mat4& mat4::mk_ortho(f32 left, f32 right, f32 bottom, f32 top, f32 z_near, f32 z_far) {
     f32 rl, tb, fn;
     ZeroStruct(this);
 
     rl = 1.f / (right - left);
     tb = 1.f / (top - bottom);
-    fn = -1.f / (farZ - nearZ);
+    fn = -1.f / (z_far - z_near);
 
     a.x = 2.f * rl;
     b.y = 2.f * tb;
     c.z = 2.f * fn;
     d.x = -(right + left) * rl;
     d.y = -(top + bottom) * tb;
-    d.z = (farZ + nearZ) * fn;
+    d.z = (z_far + z_near) * fn;
     d.w = 1.f;
 
+    return *this;
+}
+
+mat4& mat4::mk_perspective(f32 fov_y, f32 aspect, f32 z_near, f32 z_far) {
+    f32 tan_half_fov_y = tanf(fov_y / 2.f);
+
+    ZeroStruct(this);
+    a.x = 1.f / (aspect * tan_half_fov_y);
+    b.y = -1.f / tan_half_fov_y;
+    c.z = z_far / (z_near - z_far);
+    c.w = -1.f;
+    d.z = -(z_far * z_near) / (z_far - z_near);
     return *this;
 }
 
@@ -404,6 +436,34 @@ mat4& mat4::mk_rotation_angle_axis(f32 angle, vec3a normalized_axis) {
     return *this;
 }
 
+mat4& mat4::mk_look_at(vec3a eye, vec3a target, vec3a up) {
+    vec3a f = (target - eye).normalize();
+    vec3a s = f.cross(up).normalize();
+    vec3a u = s.cross(f);
+
+    a.x = s.x;
+    b.x = s.y;
+    c.x = s.z;
+    d.x = -s.dot(eye);
+
+    a.y = u.x;
+    b.y = u.y;
+    c.y = u.z;
+    d.y = -u.dot(eye);
+
+    a.z = -f.x;
+    b.z = -f.y;
+    c.z = -f.z;
+    d.z = f.dot(eye);
+
+    a.w = 0.f;
+    b.w = 0.f;
+    c.w = 0.f;
+    d.w = 1.f;
+
+    return *this;
+}
+
 mat4& mat4::apply_scale(vec3a scale) {
     a *= scale.x;
     b *= scale.y;
@@ -411,12 +471,17 @@ mat4& mat4::apply_scale(vec3a scale) {
     return *this;
 }
 
-mat4 operator*(mat4& lhs, mat4& rhs) {
+mat4& mat4::apply_translation(vec3a translate) {
+    d.vector = f32x4_add(d.vector, translate.vector);
+    return *this;
+}
+
+mat4 operator*(mat4 lhs, mat4 rhs) {
     mat4 ret    = lhs;
     return ret *= rhs;
 }
 
-mat4& operator*=(mat4& lhs, mat4& rhs) {
+mat4& operator*=(mat4& lhs, mat4 rhs) {
     f32x4 r0 = rhs.a.vector;
     f32x4 r1 = rhs.b.vector;
     f32x4 r2 = rhs.c.vector;
@@ -455,6 +520,7 @@ mat4& operator*=(mat4& lhs, mat4& rhs) {
 }
 
 void print_value(Vec<char>* out, mat4 m) {
+    print_value(out, '[');
     print_value(out, m.a);
     print_value(out, ',');
     print_value(out, m.b);
@@ -462,6 +528,7 @@ void print_value(Vec<char>* out, mat4 m) {
     print_value(out, m.c);
     print_value(out, ',');
     print_value(out, m.d);
+    print_value(out, ']');
 }
 
 // -----------------------------------------------------------------------------

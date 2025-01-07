@@ -15,6 +15,8 @@ struct mat4;
 
 // -----------------------------------------------------------------------------
 
+// TODO(jaburns) check that this* gets optimized away for these types and Str
+
 struct vec2 {
     union {
         struct {
@@ -134,6 +136,7 @@ struct vec3a {
     };
 
     f32   dot(vec3a rhs);
+    vec3a cross(vec3a rhs);
     vec3a normalize();
 
     vec3 to_vec3();
@@ -248,13 +251,17 @@ struct mat4 {
     vec4 a, b, c, d;
 
     mat4& mk_identity();
-    mat4& mk_ortho(f32 left, f32 right, f32 bottom, f32 top, f32 nearZ, f32 farZ);
+    mat4& mk_ortho(f32 left, f32 right, f32 bottom, f32 top, f32 z_near, f32 z_far);
+    mat4& mk_perspective(f32 fov_y, f32 aspect, f32 z_near, f32 z_far);
     mat4& mk_rotation_angle_axis(f32 angle, vec3a normalized_axis);
+    mat4& mk_look_at(vec3a eye, vec3a target, vec3a up);
+
     mat4& apply_scale(vec3a scale);
+    mat4& apply_translation(vec3a translate);
 };
 
-mat4  operator*(mat4& lhs, mat4& rhs);
-mat4& operator*=(mat4& lhs, mat4& rhs);
+mat4  operator*(mat4 lhs, mat4 rhs);
+mat4& operator*=(mat4& lhs, mat4 rhs);
 
 void print_value(Vec<char>* out, mat4 v);
 

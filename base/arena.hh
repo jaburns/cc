@@ -34,7 +34,7 @@ class Arena {
     forall(T, U) T* alloc_resource(U* context, void (*drop)(U*, T*));
 };
 
-class ScratchArena : public NoCopy {
+class ScratchArena : NoCopy {
     ArenaMark mark = {};
 
   public:

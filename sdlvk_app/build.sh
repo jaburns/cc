@@ -89,7 +89,7 @@ build_shaders() {
         )"
         for entry in $entrypoints; do
             if [[ "assets/shaders/${name}.slang" -nt "assets/shaders/bin/${name}.${entry}.spv" ]]; then
-                "$VKSDK/bin/slangc" -target spirv -profile spirv_1_3 -entry "${entry}" "assets/shaders/${name}.slang" -o "assets/shaders/bin/${name}.${entry}.spv"
+                "$VKSDK/bin/slangc" -target spirv -entry "${entry}" "assets/shaders/${name}.slang" -o "assets/shaders/bin/${name}.${entry}.spv"
             fi
         done
     done

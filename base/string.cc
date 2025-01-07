@@ -94,7 +94,7 @@ Str Str::from_nullable_cstr(cchar* nullable_cstr) {
 
 char* Str::to_cstr(Arena* arena) {
     char* ret = arena->alloc_many<char>(count + 1).elems;
-    memcpy(ret, elems, count);
+    CopyArray(ret, elems, count);
     ret[count] = 0;
     return ret;
 }
@@ -111,7 +111,7 @@ bool Str::eq(Str other) {
 
 Str Str::clone(Arena* arena) {
     char* new_start = arena->alloc_many<char>(count).elems;
-    memcpy(new_start, elems, count);
+    CopyArray(new_start, elems, count);
     return from_ptr(new_start, count);
 }
 
@@ -194,28 +194,28 @@ Str Str::substr(usize idx, usize len) {
 
 u64 Str::parse_u64(i32 base) {
     char buffer[22];
-    memcpy(buffer, elems, min(21ul, count));
+    CopyArray(buffer, elems, min(21ul, count));
     buffer[count] = 0;
     return strtoull(buffer, NULL, base);
 }
 
 i64 Str::parse_i64(i32 base) {
     char buffer[22];
-    memcpy(buffer, elems, min(21ul, count));
+    CopyArray(buffer, elems, min(21ul, count));
     buffer[count] = 0;
     return strtoll(buffer, NULL, base);
 }
 
 u32 Str::parse_u32(i32 base) {
     char buffer[12];
-    memcpy(buffer, elems, min(11ul, count));
+    CopyArray(buffer, elems, min(11ul, count));
     buffer[count] = 0;
     return strtoul(buffer, NULL, base);
 }
 
 i32 Str::parse_i32(i32 base) {
     char buffer[12];
-    memcpy(buffer, elems, min(11ul, count));
+    CopyArray(buffer, elems, min(11ul, count));
     buffer[count] = 0;
     return strtol(buffer, NULL, base);
 }

@@ -204,7 +204,7 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
             .pEngineName        = "thirtythree",
             .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
-            .apiVersion         = VK_API_VERSION_1_1,
+            .apiVersion         = VK_API_VERSION_1_2,
         };
         auto create_info = VkInstanceCreateInfo{
             .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -299,7 +299,9 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
             .queueCount       = 1,
             .pQueuePriorities = &queue_priority,
         };
-        auto device_features = VkPhysicalDeviceFeatures{};
+        auto device_features = VkPhysicalDeviceFeatures{
+            .samplerAnisotropy = VK_TRUE,
+        };
 
         VkDeviceQueueCreateInfo infoz[] = {
             gfx_queue_create_info,
@@ -604,8 +606,7 @@ void Gfx::begin_frame() {
 top:
     vkWaitForFences(device, 1, &in_flight_fences[cur_framebuffer_idx], VK_TRUE, UINT64_MAX);
 
-    u32      image_index;
-    VkResult result = vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, image_available_semaphores[cur_framebuffer_idx], nullptr, &image_index);
+    VkResult result = vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, image_available_semaphores[cur_framebuffer_idx], nullptr, &cur_image_idx);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebuffer_resized) {
         log("vkAcquireNextImageKHR result: ", result);
@@ -648,9 +649,9 @@ top:
     VKExpect(vkBeginCommandBuffer(buffer, &begin_info));
 
     frame = {
-        .cmd_buffer  = buffer,
-        .framebuffer = main_pass_framebuffers[image_index],
-        .image_index = image_index,
+        .cmd_buffer        = buffer,
+        .framebuffer       = main_pass_framebuffers[cur_image_idx],
+        .framebuffer_index = cur_framebuffer_idx,
     };
 }
 
@@ -663,7 +664,7 @@ void Gfx::end_frame() {
     auto imgui_rp_begin = VkRenderPassBeginInfo{
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass      = imgui_render_pass,
-        .framebuffer     = imgui_framebuffers[frame.image_index],
+        .framebuffer     = imgui_framebuffers[cur_image_idx],
         .renderArea      = {{0, 0}, extent},
         .clearValueCount = 0,
         .pClearValues    = nullptr,
@@ -695,7 +696,7 @@ void Gfx::end_frame() {
         .pWaitSemaphores    = &render_finished_semaphores[cur_framebuffer_idx],
         .swapchainCount     = 1,
         .pSwapchains        = &swap_chain,
-        .pImageIndices      = &frame.image_index,
+        .pImageIndices      = &cur_image_idx,
     };
 
     VkResult result = vkQueuePresentKHR(present_queue, &present_info);
@@ -708,6 +709,7 @@ void Gfx::end_frame() {
     }
 
     cur_framebuffer_idx = (cur_framebuffer_idx + 1) % MAX_FRAMES_IN_FLIGHT;
+    ZeroStruct(&frame);
 }
 
 // -----------------------------------------------------------------------------
@@ -725,19 +727,18 @@ void Gfx::vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemory
     vkGetBufferMemoryRequirements(device, *out_buffer, &mem_requirements);
 
     u32 mem_type_idx = -1;
-
-    VkPhysicalDeviceMemoryProperties mem_properties;
-    vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
-
-    for (u32 i = 0; i < mem_properties.memoryTypeCount; i++) {
-        if ((mem_requirements.memoryTypeBits & (1 << i)) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
-            mem_type_idx = i;
-            break;
+    {
+        VkPhysicalDeviceMemoryProperties mem_properties;
+        vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
+        for (u32 i = 0; i < mem_properties.memoryTypeCount; i++) {
+            if ((mem_requirements.memoryTypeBits & (1 << i)) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+                mem_type_idx = i;
+                break;
+            }
         }
-    }
-
-    if (mem_type_idx == -1) {
-        Panic("Failed to find memory type");
+        if (mem_type_idx == -1) {
+            Panic("Failed to find memory type");
+        }
     }
 
     auto alloc_info = VkMemoryAllocateInfo{
@@ -754,39 +755,158 @@ void Gfx::vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemory
     drop_pool->push(vkFreeMemory, *out_buffer_memory);
 }
 
-void Gfx::vk_copy_buffer(VkQueue queue, VkBuffer dest, VkBuffer src, VkDeviceSize size) {
-    auto allocInfo = VkCommandBufferAllocateInfo{
+void Gfx::vk_create_image(u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkImage* out_image, VkDeviceMemory* out_image_memory) {
+    auto image_info = VkImageCreateInfo{
+        .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType     = VK_IMAGE_TYPE_2D,
+        .extent.width  = width,
+        .extent.height = height,
+        .extent.depth  = 1,
+        .mipLevels     = 1,
+        .arrayLayers   = 1,
+        .format        = format,
+        .tiling        = tiling,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .usage         = usage,
+        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
+    };
+    VKExpect(vkCreateImage(device, &image_info, nullptr, out_image));
+
+    VkMemoryRequirements mem_requirements;
+    vkGetImageMemoryRequirements(device, *out_image, &mem_requirements);
+
+    u32 mem_type_idx = -1;
+    {
+        VkPhysicalDeviceMemoryProperties mem_properties;
+        vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_properties);
+        for (u32 i = 0; i < mem_properties.memoryTypeCount; i++) {
+            if ((mem_requirements.memoryTypeBits & (1 << i)) && (mem_properties.memoryTypes[i].propertyFlags & properties) == properties) {
+                mem_type_idx = i;
+                break;
+            }
+        }
+        if (mem_type_idx == -1) {
+            Panic("Failed to find memory type");
+        }
+    }
+
+    auto alloc_info = VkMemoryAllocateInfo{
+        .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize  = mem_requirements.size,
+        .memoryTypeIndex = mem_type_idx,
+    };
+
+    VKExpect(vkAllocateMemory(device, &alloc_info, nullptr, out_image_memory));
+
+    vkBindImageMemory(device, *out_image, *out_image_memory, 0);
+
+    drop_pool->push(vkDestroyImage, *out_image);
+    drop_pool->push(vkFreeMemory, *out_image_memory);
+}
+
+VkCommandBuffer Gfx::vk_one_shot_command_buffer_begin() {
+    auto alloc_info = VkCommandBufferAllocateInfo{
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandPool        = command_pool,
         .commandBufferCount = 1,
     };
 
-    VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+    VkCommandBuffer cmd_buffer;
+    vkAllocateCommandBuffers(device, &alloc_info, &cmd_buffer);
 
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    auto begin_info = VkCommandBufferBeginInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+    };
+    vkBeginCommandBuffer(cmd_buffer, &begin_info);
 
-    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    return cmd_buffer;
+}
 
-    VkBufferCopy copyRegion{};
-    copyRegion.size = size;
-    vkCmdCopyBuffer(commandBuffer, src, dest, 1, &copyRegion);
-
-    vkEndCommandBuffer(commandBuffer);
+void Gfx::vk_one_shot_command_buffer_submit(VkCommandBuffer cmd_buffer) {
+    vkEndCommandBuffer(cmd_buffer);
 
     VkSubmitInfo submitInfo{};
     submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers    = &commandBuffer;
+    submitInfo.pCommandBuffers    = &cmd_buffer;
 
-    vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(queue);
+    vkQueueSubmit(graphics_queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphics_queue);
 
-    vkFreeCommandBuffers(device, command_pool, 1, &commandBuffer);
+    vkFreeCommandBuffers(device, command_pool, 1, &cmd_buffer);
 }
+
+void Gfx::vk_copy_buffer(VkBuffer dest, VkBuffer src, VkDeviceSize size) {
+    auto cmd_buffer = vk_one_shot_command_buffer_begin();
+
+    auto copy_region = VkBufferCopy{.size = size};
+    vkCmdCopyBuffer(cmd_buffer, src, dest, 1, &copy_region);
+
+    vk_one_shot_command_buffer_submit(cmd_buffer);
+}
+
+void Gfx::vk_copy_buffer_to_image(VkImage dest, VkBuffer src, u32 width, u32 height) {
+    auto cmd_buffer = vk_one_shot_command_buffer_begin();
+
+    auto region = VkBufferImageCopy{
+        .bufferOffset                    = 0,
+        .bufferRowLength                 = 0,
+        .bufferImageHeight               = 0,
+        .imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+        .imageSubresource.mipLevel       = 0,
+        .imageSubresource.baseArrayLayer = 0,
+        .imageSubresource.layerCount     = 1,
+        .imageOffset                     = {0, 0, 0},
+        .imageExtent                     = {width, height, 1},
+    };
+    vkCmdCopyBufferToImage(cmd_buffer, src, dest, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    vk_one_shot_command_buffer_submit(cmd_buffer);
+}
+
+void Gfx::vk_transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) {
+    auto cmd_buffer = vk_one_shot_command_buffer_begin();
+
+    auto barrier = VkImageMemoryBarrier{
+        .sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .oldLayout                       = old_layout,
+        .newLayout                       = new_layout,
+        .srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED,
+        .image                           = image,
+        .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel   = 0,
+        .subresourceRange.levelCount     = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount     = 1,
+    };
+
+    VkPipelineStageFlags source_stage;
+    VkPipelineStageFlags destination_stage;
+
+    if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED && new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        source_stage          = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destination_stage     = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    } else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+        barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        source_stage          = VK_PIPELINE_STAGE_TRANSFER_BIT;
+        destination_stage     = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    } else {
+        Panic("Unsupported layout transition");
+    }
+
+    vkCmdPipelineBarrier(cmd_buffer, source_stage, destination_stage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+    vk_one_shot_command_buffer_submit(cmd_buffer);
+}
+
+// -----------------------------------------------------------------------------
 
 template <typename T, auto Fn, typename... Args>
 Slice<T> vk_get_slice(Arena* arena, Args... args) {
@@ -826,7 +946,7 @@ forall(T) void VKDropPool::push(void (*drop)(VkDevice, T*, const VkAllocationCal
 }
 
 void VKDropPool::drop_all(VkDevice device) {
-    for (u32 i = 0; i < elems.count; ++i) {
+    for (isize i = elems.count - 1; i >= 0; --i) {
         elems.elems[i].drop(device, elems.elems[i].target, nullptr);
     }
     elems.count = 0;
