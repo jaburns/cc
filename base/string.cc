@@ -74,13 +74,6 @@ void print_value(Vec<char>* out, Str value) {
     }
 }
 
-Str Str::from_ptr(cchar* elems, usize count) {
-    Str ret   = {};
-    ret.elems = elems;
-    ret.count = count;
-    return ret;
-}
-
 Str Str::from_cstr(cchar* cstr) {
     Str ret   = {};
     ret.elems = cstr;
@@ -112,13 +105,13 @@ bool Str::eq(Str other) {
 Str Str::clone(Arena* arena) {
     char* new_start = arena->alloc_many<char>(count).elems;
     CopyArray(new_start, elems, count);
-    return from_ptr(new_start, count);
+    return Str{new_start, count};
 }
 
 Str Str::before_first_index(char split) {
     cchar* end = (cchar*)memchr(elems, split, count);
     if (end != nullptr) {
-        return from_ptr(elems, end - elems);
+        return Str{elems, (usize)(end - elems)};
     }
     return *this;
 }
@@ -127,16 +120,13 @@ Str Str::after_first_index(char split) {
     cchar* end = (cchar*)memchr(elems, split, count);
     if (end != nullptr) {
         usize fwd = end - elems + 1;
-        return from_ptr(elems + fwd, count - fwd);
+        return Str{elems + fwd, count - fwd};
     }
     return Str{};
 }
 
 Str Str::after_last_index(char split) {
-    Str ret = from_ptr(
-        elems + count - 1,
-        1
-    );
+    Str ret = {elems + count - 1, 1};
     while (ret.elems[0] != split) {
         ret.elems--;
         ret.count++;

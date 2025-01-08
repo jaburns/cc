@@ -43,7 +43,6 @@ struct Str {
     cchar* elems;
     usize  count;
 
-    static Str from_ptr(cchar* elems, usize count);
     static Str from_cstr(cchar* cstr);
     static Str from_nullable_cstr(cchar* nullable_cstr);
     char*      to_cstr(Arena* arena);
@@ -68,6 +67,8 @@ struct Str {
     i32 parse_i32(i32 base);
 };
 void print_value(Vec<char>* out, Str value);
+
+#define Str(cstr_lit) Str{cstr_lit, sizeof(cstr_lit) - 1}
 
 bool cstr_eq(cchar* a, cchar* b);
 

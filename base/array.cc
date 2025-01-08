@@ -3,13 +3,6 @@ namespace {
 // -----------------------------------------------------------------------------
 #define This Slice<T>
 
-forall(T) This This::from_ptr(T* elems, usize count) {
-    return {
-        .elems = elems,
-        .count = count,
-    };
-}
-
 forall(T) T& This::operator[](usize index) {
     if (index >= count) Panic("Out of bounds access");
     return elems[index];
@@ -36,6 +29,13 @@ forall(T) void This::fill_copy(T* source) {
 
 forall(T) void This::copy_into(void* mem) {
     memcpy(mem, elems, count * sizeof(T));
+}
+
+forall(T) forall(U) Slice<U> This::cast() {
+    return Slice<U>{
+        .elems = (U*)elems,
+        .count = count * sizeof(T) / sizeof(U),
+    };
 }
 
 forall(T) void print_value(Vec<char>* out, Slice<T>& slice) {
@@ -72,7 +72,7 @@ forall(T) T& This::operator[](usize index) {
 }
 
 forall(T) Slice<T> This::slice() {
-    return Slice<T>::from_ptr(elems, count);
+    return Slice<T>{elems, count};
 }
 
 forall(T) T* This::push() {
@@ -101,7 +101,7 @@ Template T& This::operator[](usize index) {
 }
 
 Template Slice<T> This::slice() {
-    return Slice<T>::from_ptr(elems, COUNT);
+    return Slice<T>{elems, COUNT};
 }
 
 Template void print_value(Vec<char>* out, This& array) {
@@ -121,7 +121,7 @@ Template T& This::operator[](usize index) {
 }
 
 Template Slice<T> This::slice() {
-    return Slice<T>::from_ptr(elems, count);
+    return Slice<T>{elems, count};
 }
 
 Template T* This::push() {

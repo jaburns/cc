@@ -32,11 +32,10 @@ forall(T) struct Slice {
     T*    elems;
     usize count;
 
-    static Slice from_ptr(T* elems, usize count);
-
     forall(U) bool contains_all(Slice<U> search, bool (*compare)(T* a, U* b));
     void fill_copy(T* source);
     void copy_into(void* mem);
+    forall(U) Slice<U> cast();
 
     T& operator[](usize index);
 
@@ -44,7 +43,7 @@ forall(T) struct Slice {
     ArrayIter<T> end() { return ArrayIter<T>{}; }
 };
 
-#define Slice(v0, ...) (Slice<decltype(v0)>::from_ptr((decltype(v0)[]){v0, __VA_ARGS__}, sizeof((decltype(v0)[]){v0, __VA_ARGS__}) / sizeof(decltype(v0))))
+#define Slice(v0, ...) (Slice<decltype(v0)>{(decltype(v0)[]){v0, __VA_ARGS__}, sizeof((decltype(v0)[]){v0, __VA_ARGS__}) / sizeof(decltype(v0))})
 
 // -----------------------------------------------------------------------------
 

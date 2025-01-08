@@ -199,6 +199,8 @@ build_shaders
 [[ "$VERIFY" == 1 ]] && verify_includes
 update_vscode_config
 
+jaburns_cc/meta/derive_struct_info.sh 'src' '*.*'
+
 build_deps
 build_main
 

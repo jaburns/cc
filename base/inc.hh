@@ -30,6 +30,14 @@
 #include "memory.hh"
 #include "arena.hh"
 #include "string.hh"
+
+struct StructMemberInfo {
+    Str   type;
+    Str   name;
+    usize size;
+    usize offset;
+};
+
 #include "math.hh"
 #include "hasharray.hh"
 #include "channel.hh"

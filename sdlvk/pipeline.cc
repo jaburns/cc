@@ -29,14 +29,17 @@ PipelineSpec PipelineSpec::mk_default() {
             .blendEnable    = VK_FALSE,
         },
         .color_blend = {
-            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, .logicOpEnable = VK_FALSE, .logicOp = VK_LOGIC_OP_COPY,
-            .attachmentCount = 0,        // overwritten on instantiation
-            .pAttachments    = nullptr,  // overwritten on instantiation
+            .sType         = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            .logicOpEnable = VK_FALSE,
+            .logicOp       = VK_LOGIC_OP_COPY,
+            // overwritten on instantiation
+            .attachmentCount = 0,
+            .pAttachments    = nullptr,
         },
         .depth_stencil = {
             .sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
             .depthTestEnable       = VK_TRUE,
-            .depthWriteEnable      = VK_FALSE,
+            .depthWriteEnable      = VK_TRUE,
             .depthCompareOp        = VK_COMPARE_OP_LESS,
             .depthBoundsTestEnable = VK_FALSE,
             .stencilTestEnable     = VK_FALSE,

@@ -31,7 +31,7 @@ void xml_parse(
             continue;
         }
 
-        Str whole_tag = Str::from_ptr(read, file_end - read).before_first_index('>');
+        Str whole_tag = Str{read, (usize)(file_end - read)}.before_first_index('>');
         Str tag       = whole_tag.trim();
         Assert(tag.count > 0);
         bool pop_path = false;
@@ -42,10 +42,10 @@ void xml_parse(
             pop_path = true;
 
             Str content = content_start
-                              ? Str::from_ptr(content_start, read - 1 - content_start)
+                              ? Str{content_start, (usize)(read - 1 - content_start)}
                               : Str{};
 
-            Str str_path = Str::from_ptr(path.elems, path.count);
+            Str str_path = Str{path.elems, path.count};
             on_element_close(user_ctx, str_path, content);
 
         } else if (tag.elems[0] != '?') {
@@ -61,7 +61,7 @@ void xml_parse(
             cchar* cur = tag.elems;
             cchar* end = tag.elems + tag.count;
             while (cur < end && !isspace(*cur)) ++cur;
-            Str tag_name = Str::from_ptr(tag.elems, cur - tag.elems);
+            Str tag_name = Str{tag.elems, (usize)(cur - tag.elems)};
 
             str_print(&path, tag_name);
 
@@ -71,7 +71,7 @@ void xml_parse(
 
                 cchar* key_start = cur;
                 while (cur < end && !isspace(*cur) && *cur != '=') ++cur;
-                Str key = Str::from_ptr(key_start, cur - key_start);
+                Str key = Str{key_start, (usize)(cur - key_start)};
 
                 while (cur < end && isspace(*cur)) ++cur;
                 Assert(cur < end && *cur == '=');
@@ -90,13 +90,13 @@ void xml_parse(
 
                 *attributes.push() = XmlParseAttribute{
                     .key   = key,
-                    .value = Str::from_ptr(val_start, cur - val_start),
+                    .value = Str{val_start, (usize)(cur - val_start)},
                 };
 
                 ++cur;
             }
 
-            Str str_path = Str::from_ptr(path.elems, path.count);
+            Str str_path = Str{path.elems, path.count};
             on_element_open(user_ctx, str_path, attributes.slice());
             if (pop_path) on_element_close(user_ctx, str_path, Str{});
         }
