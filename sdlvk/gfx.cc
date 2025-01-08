@@ -158,20 +158,20 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
     auto scratch = Arena::create(memory_get_global_allocator(), 0);
     defer { scratch.destroy(); };
 
-    auto validation_layers = Array(
-        (cchar*)"VK_LAYER_KHRONOS_validation"
-    );
-    auto instance_extensions = Array(
-        (cchar*)"VK_KHR_portability_enumeration",
+    cchar* validation_layers[] = {
+        "VK_LAYER_KHRONOS_validation"
+    };
+    cchar* instance_extensions[] = {
+        "VK_KHR_portability_enumeration",
         "VK_MVK_macos_surface",
         "VK_EXT_metal_surface",
         "VK_KHR_surface",
         "VK_EXT_debug_utils"
-    );
-    auto device_extensions = Array(
-        (cchar*)"VK_KHR_portability_subset",
+    };
+    cchar* device_extensions[] = {
+        "VK_KHR_portability_subset",
         "VK_KHR_swapchain"
-    );
+    };
     f32 queue_priority = 1.f;
 
     // create window
@@ -217,13 +217,13 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
     {
         auto available_validation_layers = vk_get_slice<VkLayerProperties, vkEnumerateInstanceLayerProperties>(&scratch);
         Assert(available_validation_layers.contains_all<cchar*>(
-            validation_layers.slice(),
+            SliceFromRawArray(cchar*, validation_layers),
             [](auto a, auto b) { return cstr_eq(a->layerName, *b); }
         ));
 
         auto available_extensions = vk_get_slice<VkExtensionProperties, vkEnumerateInstanceExtensionProperties>(&scratch, nullptr);
         Assert(available_extensions.contains_all<cchar*>(
-            instance_extensions.slice(),
+            SliceFromRawArray(cchar*, instance_extensions),
             [](auto a, auto b) { return cstr_eq(a->extensionName, *b); }
         ));
 
@@ -238,16 +238,16 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         auto create_info = VkInstanceCreateInfo{
             .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pApplicationInfo        = &app_info,
-            .enabledExtensionCount   = instance_extensions.count,
-            .ppEnabledExtensionNames = instance_extensions.elems,
+            .enabledExtensionCount   = RawArrayLen(instance_extensions),
+            .ppEnabledExtensionNames = instance_extensions,
             .flags                   = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
         };
 
         auto debug_create_info = VkDebugUtilsMessengerCreateInfoEXT{};
 
         if (ENABLE_VALIDATION_LAYERS) {
-            create_info.enabledLayerCount   = 1;
-            create_info.ppEnabledLayerNames = validation_layers.elems;
+            create_info.enabledLayerCount   = RawArrayLen(validation_layers);
+            create_info.ppEnabledLayerNames = validation_layers;
 
             debug_create_info = {
                 .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -287,7 +287,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             auto available_extensions = vk_get_slice<VkExtensionProperties, vkEnumerateDeviceExtensionProperties>(&scratch, physical_device, nullptr);
 
             bool all_supported = available_extensions.contains_all<cchar*>(
-                device_extensions.slice(),
+                SliceFromRawArray(cchar*, device_extensions),
                 [](auto a, auto b) { return cstr_eq(a->extensionName, *b); }
             );
             if (!all_supported) continue;
@@ -342,13 +342,13 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .pQueueCreateInfos       = infoz,
             .queueCreateInfoCount    = present_queue_idx == graphics_queue_idx ? 1u : 2u,
             .pEnabledFeatures        = &device_features,
-            .enabledExtensionCount   = device_extensions.count,
-            .ppEnabledExtensionNames = device_extensions.elems,
+            .enabledExtensionCount   = RawArrayLen(device_extensions),
+            .ppEnabledExtensionNames = device_extensions,
         };
 
         if (ENABLE_VALIDATION_LAYERS) {
-            create_info.enabledLayerCount   = 1;
-            create_info.ppEnabledLayerNames = validation_layers.elems;
+            create_info.enabledLayerCount   = RawArrayLen(validation_layers);
+            create_info.ppEnabledLayerNames = validation_layers;
         } else {
             create_info.enabledLayerCount = 0;
         }
@@ -366,12 +366,8 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         }
     }
 
-    depth_format = vk_find_supported_format(
-        physical_device,
-        Slice(VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT),
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
-    );
+    VkFormat formats[] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
+    depth_format       = vk_find_supported_format(physical_device, SliceFromRawArray(VkFormat, formats), VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
     // create main render pass
     {

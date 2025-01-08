@@ -81,7 +81,7 @@ void watch_fs_create(const char** paths, unsigned int path_count) {
     pthread_create(&g_fsevents_thread, NULL, fsevents_thread_function, NULL);
 }
 
-const char* watch_fs_check_file_changed(void) {
+const char* watch_fs_consume_file_changed(void) {
     bool changed   = g_file_changed;
     g_file_changed = false;
     strncpy(g_last_changed_file_out, g_last_changed_file_in, PATH_MAX - 1);

@@ -5,7 +5,7 @@ namespace {
 void AudioClip::load(Arena* arena, cchar* path) {
     ZeroStruct(this);
 
-    ScratchArena scratch = ScratchArena(Slice(arena));
+    ScratchArena scratch = ScratchArena(Slice<Arena*>{&arena, 1});
 
     FILE* fp = fopen(path, "rb");
     if (!fp) Panic("Failed to open audio file %s", path);

@@ -1,5 +1,6 @@
 #if EDITOR
 #include <dlfcn.h>
+#define app_dll_export extern "C"
 #include "../../src/main.hh"
 #include "watch_fs.h"
 #include "../sdlvk/inc.cc"
@@ -7,6 +8,7 @@
 #include "main_dll.cc"
 #endif
 namespace {
+// -----------------------------------------------------------------------------
 
 #if EDITOR
 global AtomicVal<bool> rebuild_running   = {false};
@@ -19,6 +21,8 @@ void* rebuild_thread_fn(void* data) {
     return nullptr;
 }
 #endif
+
+// -----------------------------------------------------------------------------
 
 global AtomicVal<bool> can_do_audio = {false};
 global AtomicVal<bool> inside_audio = {false};
@@ -49,9 +53,9 @@ end:
     *inside_audio = false;
 }
 
-}  // namespace
+// -----------------------------------------------------------------------------
 
-i32 main() {
+void root_main() {
 #if EDITOR
     void* handle = dlopen("bin/libreload.dylib", RTLD_LAZY);
     if (!handle) Panic("Error loading dylib: %s\n", dlerror());
@@ -103,7 +107,7 @@ i32 main() {
 
 #if EDITOR
         if (!*rebuild_running) {
-            Str changed_path = Str::from_nullable_cstr(watch_fs_check_file_changed());
+            Str changed_path = Str::from_nullable_cstr(watch_fs_consume_file_changed());
             if (changed_path.count > 0) {
                 Str    suffix = changed_path.trim().after_last_index('.');
                 cchar* cmd    = nullptr;
@@ -141,7 +145,7 @@ i32 main() {
 
             *can_do_audio = true;
 
-            watch_fs_check_file_changed();
+            watch_fs_consume_file_changed();
         }
 #endif
     }
@@ -155,6 +159,11 @@ i32 main() {
     watch_fs_destroy();
     if (rebuild_thread) pthread_join(rebuild_thread, nullptr);
 #endif
-
-    return 0;
 }
+
+}  // namespace
+// -----------------------------------------------------------------------------
+
+i32 main() { root_main(); }
+
+// -----------------------------------------------------------------------------

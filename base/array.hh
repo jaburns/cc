@@ -43,8 +43,6 @@ forall(T) struct Slice {
     ArrayIter<T> end() { return ArrayIter<T>{}; }
 };
 
-#define Slice(v0, ...) (Slice<decltype(v0)>{(decltype(v0)[]){v0, __VA_ARGS__}, sizeof((decltype(v0)[]){v0, __VA_ARGS__}) / sizeof(decltype(v0))})
-
 // -----------------------------------------------------------------------------
 
 forall(T) struct Vec {
@@ -86,9 +84,8 @@ Template struct Array {
 
 Template void print_value(Vec<char>* out, Array<T, COUNT>& array);
 
-#define Array(v0, ...) (Array<decltype(v0), sizeof((decltype(v0)[]){v0, __VA_ARGS__}) / sizeof(decltype(v0))>{{v0, __VA_ARGS__}})
-
-#define RawArrayLen(arr) (sizeof(arr) / sizeof((arr)[0]))
+#define RawArrayLen(array)             (sizeof(array) / sizeof((array)[0]))
+#define SliceFromRawArray(type, array) (Slice<type>{(array), RawArrayLen(array)})
 
 #undef Template
 // -----------------------------------------------------------------------------
