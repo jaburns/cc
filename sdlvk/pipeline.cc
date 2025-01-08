@@ -150,4 +150,28 @@ PipelineInstance PipelineInstance::create(VKDropPool* drop_pool, VkDevice device
 }
 
 // -----------------------------------------------------------------------------
+
+VkFormat vk_get_format_for_type_name(Str type_name) {
+    if (type_name.eq_cstr("vec2")) {
+        return VK_FORMAT_R32G32_SFLOAT;
+    } else if (type_name.eq_cstr("vec3")) {
+        return VK_FORMAT_R32G32B32_SFLOAT;
+    }
+    Panic("No format found for type '%.*s'", (i32)type_name.count, type_name.elems);
+}
+
+Slice<VkVertexInputAttributeDescription> vk_get_vertex_attributes_for_struct(Arena* arena, u32 binding, Slice<StructMemberInfo> struct_info) {
+    auto ret = arena->alloc_many<VkVertexInputAttributeDescription>(struct_info.count);
+    for (u32 i = 0; i < ret.count; ++i) {
+        ret.elems[i] = {
+            .binding  = binding,
+            .location = i,
+            .format   = vk_get_format_for_type_name(struct_info.elems[i].type),
+            .offset   = (u32)struct_info.elems[i].offset,
+        };
+    }
+    return ret;
+}
+
+// -----------------------------------------------------------------------------
 }  // namespace

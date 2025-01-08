@@ -147,7 +147,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
     const VkDebugUtilsMessengerCallbackDataEXT* callback_data,
     void*                                       user_data
 ) {
-    println("Vulkan validation layer: ", callback_data->pMessage);
+    println("\033[1;35mVulkan validation layer:\033[0m ", callback_data->pMessage);
     return VK_FALSE;
 }
 

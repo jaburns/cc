@@ -30,6 +30,12 @@
 #include "memory.hh"
 #include "arena.hh"
 #include "string.hh"
+#include "math.hh"
+#include "hasharray.hh"
+#include "channel.hh"
+#include "fs.hh"
+#include "xml.hh"
+#include "test.hh"
 
 struct StructMemberInfo {
     Str   type;
@@ -37,10 +43,3 @@ struct StructMemberInfo {
     usize size;
     usize offset;
 };
-
-#include "math.hh"
-#include "hasharray.hh"
-#include "channel.hh"
-#include "fs.hh"
-#include "xml.hh"
-#include "test.hh"

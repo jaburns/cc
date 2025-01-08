@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+set -e
+#-------------------------------------------------------------------------------
 
 if [[ -z "$1" || -z "$2" ]]; then
     echo ''
@@ -9,7 +11,7 @@ if [[ -z "$1" || -z "$2" ]]; then
     exit 1
 fi
 
-OUT_PATH=''
+#-------------------------------------------------------------------------------
 
 generate() {
     rm -f /tmp/gen.h
@@ -40,3 +42,5 @@ generate() {
 for file in $(find "$1" -name "$2" -print0 | xargs -0 grep -l "#!derive_struct_info"); do
     generate "$file" "$(sed -n '/#!derive_struct_info/,/#include/p' $file)"
 done
+
+#-------------------------------------------------------------------------------

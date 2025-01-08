@@ -29,5 +29,8 @@ struct PipelineInstance {
     static PipelineInstance create(VKDropPool* drop_pool, VkDevice device, VkRenderPass render_pass, PipelineSpec spec);
 };
 
+VkFormat                                 vk_get_format_for_type_name(Str type_name);
+Slice<VkVertexInputAttributeDescription> vk_get_vertex_attributes_for_struct(Arena* arena, u32 binding, Slice<StructMemberInfo> struct_info);
+
 // -----------------------------------------------------------------------------
 }  // namespace
