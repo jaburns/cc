@@ -22,7 +22,7 @@ generate() {
         elif [[ "$line" == '#include'* ]]; then
             local out_path="$(echo "$line" | tr -s ' ' '\t' | cut -f2 | tr -d '"')"
             >>/tmp/gen.h echo '};'
-            >>/tmp/gen.h echo "Slice<StructMemberInfo> ${struct_name}_MEMBERS = Slice<StructMemberInfo>{x_Vertex_MEMBERS_ARRAY, RawArrayLen(x_Vertex_MEMBERS_ARRAY)};"
+            >>/tmp/gen.h echo "Slice<StructMemberInfo> ${struct_name}_MEMBERS = Slice<StructMemberInfo>{x_${struct_name}_MEMBERS_ARRAY, RawArrayLen(x_${struct_name}_MEMBERS_ARRAY)};"
             mv /tmp/gen.h "$(dirname "$1")/$out_path"
         else
             local type="$(echo "$line" | tr -s ' ' '\t' | cut -f1)"
