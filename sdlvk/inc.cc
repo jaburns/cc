@@ -4,3 +4,4 @@
 
 #include "audio.cc"
 #include "gfx.cc"
+#include "pipeline.cc"

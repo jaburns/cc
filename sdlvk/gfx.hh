@@ -37,21 +37,21 @@ class Gfx {
   public:
     static constexpr usize MAX_FRAMES_IN_FLIGHT = 2;
 
-    struct Frame {
-        VkCommandBuffer cmd_buffer;
-        VkFramebuffer   framebuffer;
-        u32             framebuffer_index;
-    };
-
   private:
     SDL_Window*       sdl_window;
     SDL_AudioDeviceID sdl_audio_device;
     SDL_JoystickID    active_joystick_id;
     SDL_Joystick*     sdl_joystick;
 
-    VkQueue        present_queue;
-    VkSurfaceKHR   surface;
+    VkSurfaceKHR       surface;
+    VkSurfaceFormatKHR surface_format;
+    VkQueue            graphics_queue;
+    VkQueue            present_queue;
+    VkFormat           depth_format;
+    VkCommandPool      command_pool;
+
     VkSwapchainKHR swap_chain;
+    VKDropPool     swap_chain_drop_pool;
 
     InlineVec<VkImage, MAX_SWAP_CHAIN_IMAGES>       swap_chain_images;
     InlineVec<VkImageView, MAX_SWAP_CHAIN_IMAGES>   swap_chain_image_views;
@@ -60,6 +60,9 @@ class Gfx {
     VkRenderPass                                    imgui_render_pass;
     InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> imgui_framebuffers;
 #endif
+    VkImage        depth_image;
+    VkImageView    depth_image_view;
+    VkDeviceMemory depth_image_memory;
 
     Array<VkCommandBuffer, MAX_FRAMES_IN_FLIGHT> command_buffers;
     Array<VkSemaphore, MAX_FRAMES_IN_FLIGHT>     image_available_semaphores;
@@ -67,19 +70,16 @@ class Gfx {
     Array<VkFence, MAX_FRAMES_IN_FLIGHT>         in_flight_fences;
 
     u32  cur_image_idx;
-    u32  cur_framebuffer_idx;
     bool framebuffer_resized;
 
   public:
-    VkInstance         instance;
-    VkPhysicalDevice   physical_device;
-    VkDevice           device;
-    VkSurfaceFormatKHR surface_format;
-    VkQueue            graphics_queue;
-    VkCommandPool      command_pool;
-    VkRenderPass       main_pass;
-    Frame              frame;
-    ivec2              screen_size;
+    u32 cur_framebuffer_idx;
+
+    VkInstance       instance;
+    VkPhysicalDevice physical_device;
+    VkDevice         device;
+    VkRenderPass     main_pass;
+    ivec2            screen_size;
 
     AudioPlayer     audio_player;
     AudioCallbackFn audio_callback_fn;
@@ -90,11 +90,14 @@ class Gfx {
     f32           mouse_delta_wheel;
     bool          mouse_button;
 
-    void init(cchar* window_title, SDL_AudioCallback sdl_audio_callback);
+    void init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_callback);
     bool poll();
-    void begin_frame();
-    void end_frame();
-    void wait_safe_quit();
+
+    VkCommandBuffer main_render_pass_begin(vec4 color_clear, f32 depth_clear, u32 stencil_clear);
+    void            main_render_pass_end();
+
+    void wait_queue_idle();
+    void wait_device_idle();
 
     void vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkBuffer* out_buffer, VkDeviceMemory* out_buffer_memory);
     void vk_create_image(u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkImage* out_image, VkDeviceMemory* out_image_memory);

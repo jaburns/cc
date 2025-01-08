@@ -1,5 +1,6 @@
 #include "inc.hh"
 namespace {
+// -----------------------------------------------------------------------------
 
 void AudioClip::load(Arena* arena, cchar* path) {
     ZeroStruct(this);
@@ -123,4 +124,5 @@ void AudioPlayer::stream_callback(u8* out_stream, i32 out_stream_byte_len) {
     }
 }
 
+// -----------------------------------------------------------------------------
 }  // namespace

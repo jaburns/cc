@@ -162,12 +162,12 @@ void print_value(Vec<char>* out, vec3a v);
 
 #define VEC3A_ZERO    (vec3a(0, 0, 0))
 #define VEC3A_ONE     (vec3a(1, 1, 1))
-#define VEC3A_RIGHT   (vec3a(1, 0, 0))
-#define VEC3A_UP      (vec3a(0, 1, 0))
-#define VEC3A_BACK    (vec3a(0, 0, 1))
 #define VEC3A_LEFT    (vec3a(-1, 0, 0))
-#define VEC3A_DOWN    (vec3a(0, -1, 0))
-#define VEC3A_FORWARD (vec3a(0, 0, -1))
+#define VEC3A_RIGHT   (vec3a(1, 0, 0))
+#define VEC3A_BACK    (vec3a(0, -1, 0))
+#define VEC3A_FORWARD (vec3a(0, 1, 0))
+#define VEC3A_UP      (vec3a(0, 0, 1))
+#define VEC3A_DOWN    (vec3a(0, 0, -1))
 
 // -----------------------------------------------------------------------------
 
@@ -183,6 +183,9 @@ struct vec4 {
     union {
         struct {
             f32 x, y, z, w;
+        };
+        struct {
+            f32 r, g, b, a;
         };
         f32x4 vector;
     };
@@ -253,6 +256,7 @@ struct mat4 {
     mat4& mk_perspective(f32 fov_y, f32 aspect, f32 z_near, f32 z_far);
     mat4& mk_rotation_angle_axis(f32 angle, vec3a normalized_axis);
     mat4& mk_look_at(vec3a eye, vec3a target, vec3a up);
+    mat4& mk_view(vec3a camera_pos, vec3a camera_fwd_normalized, vec3a camera_up_normalized);
 
     mat4& apply_scale(vec3a scale);
     mat4& apply_translation(vec3a translate);

@@ -464,6 +464,34 @@ mat4& mat4::mk_look_at(vec3a eye, vec3a target, vec3a up) {
     return *this;
 }
 
+mat4& mat4::mk_view(vec3a camera_pos, vec3a camera_fwd_normalized, vec3a camera_up_normalized) {
+    vec3a f = camera_fwd_normalized;
+    vec3a s = f.cross(camera_up_normalized).normalize();
+    vec3a u = s.cross(f);
+
+    a.x = s.x;
+    b.x = s.y;
+    c.x = s.z;
+    d.x = -s.dot(camera_pos);
+
+    a.y = u.x;
+    b.y = u.y;
+    c.y = u.z;
+    d.y = -u.dot(camera_pos);
+
+    a.z = -f.x;
+    b.z = -f.y;
+    c.z = -f.z;
+    d.z = f.dot(camera_pos);
+
+    a.w = 0.f;
+    b.w = 0.f;
+    c.w = 0.f;
+    d.w = 1.f;
+
+    return *this;
+}
+
 mat4& mat4::apply_scale(vec3a scale) {
     a *= scale.x;
     b *= scale.y;

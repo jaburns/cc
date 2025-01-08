@@ -3,23 +3,8 @@ namespace {
 // -----------------------------------------------------------------------------
 
 void Gfx::create_swap_chain() {
-    log("creating swap chain");
-
-    if (swap_chain) {
-        vkDeviceWaitIdle(device);
-        for (usize i = 0; i < main_pass_framebuffers.count; ++i) {
-            vkDestroyFramebuffer(device, main_pass_framebuffers[i], nullptr);
-        }
-#if EDITOR
-        for (usize i = 0; i < imgui_framebuffers.count; ++i) {
-            vkDestroyFramebuffer(device, imgui_framebuffers[i], nullptr);
-        }
-#endif
-        for (usize i = 0; i < swap_chain_image_views.count; ++i) {
-            vkDestroyImageView(device, swap_chain_image_views[i], nullptr);
-        }
-        vkDestroySwapchainKHR(device, swap_chain, nullptr);
-    }
+    vkDeviceWaitIdle(device);
+    swap_chain_drop_pool.drop_all(device);
 
     VkSurfaceCapabilitiesKHR surface_capabilities;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities);
@@ -53,6 +38,7 @@ void Gfx::create_swap_chain() {
         .oldSwapchain     = nullptr,
     };
     VKExpect(vkCreateSwapchainKHR(device, &create_info, nullptr, &swap_chain));
+    swap_chain_drop_pool.push(vkDestroySwapchainKHR, swap_chain);
 
     screen_size.x = extent.width;
     screen_size.y = extent.height;
@@ -72,23 +58,47 @@ void Gfx::create_swap_chain() {
             .subresourceRange.layerCount     = 1,
         };
         VKExpect(vkCreateImageView(device, &create_info, nullptr, &swap_chain_image_views[i]));
+        swap_chain_drop_pool.push(vkDestroyImageView, swap_chain_image_views[i]);
     }
+
+    vk_create_image(
+        extent.width, extent.height, depth_format,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        &swap_chain_drop_pool, &depth_image, &depth_image_memory
+    );
+    auto depth_view_info = VkImageViewCreateInfo{
+        .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image                           = depth_image,
+        .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
+        .format                          = depth_format,
+        .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT,
+        .subresourceRange.baseMipLevel   = 0,
+        .subresourceRange.levelCount     = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount     = 1,
+    };
+    VKExpect(vkCreateImageView(device, &depth_view_info, nullptr, &depth_image_view));
+    swap_chain_drop_pool.push(vkDestroyImageView, depth_image_view);
 
     main_pass_framebuffers.count = swap_chain_image_views.count;
     for (u32 i = 0; i < main_pass_framebuffers.count; ++i) {
         VkImageView attachments[] = {
-            swap_chain_image_views.elems[i]
+            swap_chain_image_views.elems[i],
+            depth_image_view,
         };
         auto framebuffer_info = VkFramebufferCreateInfo{
             .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass      = main_pass,
-            .attachmentCount = 1,
+            .attachmentCount = 2,
             .pAttachments    = attachments,
             .width           = extent.width,
             .height          = extent.height,
             .layers          = 1,
         };
         VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &main_pass_framebuffers[i]));
+        swap_chain_drop_pool.push(vkDestroyFramebuffer, main_pass_framebuffers[i]);
     }
 
 #if EDITOR
@@ -107,8 +117,26 @@ void Gfx::create_swap_chain() {
             .layers          = 1,
         };
         VKExpect(vkCreateFramebuffer(device, &framebuffer_info, nullptr, &imgui_framebuffers[i]));
+        swap_chain_drop_pool.push(vkDestroyFramebuffer, imgui_framebuffers[i]);
     }
 #endif
+}
+
+VkFormat vk_find_supported_format(VkPhysicalDevice physical_device, Slice<VkFormat> candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
+    for (VkFormat format : candidates) {
+        VkFormatProperties props;
+        vkGetPhysicalDeviceFormatProperties(physical_device, format, &props);
+
+        if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
+            return format;
+        } else if (tiling == VK_IMAGE_TILING_OPTIMAL && (props.optimalTilingFeatures & features) == features) {
+            return format;
+        }
+    }
+    Panic("Failed to find supported format");
+}
+bool hasStencilComponent(VkFormat format) {
+    return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
 
 // -----------------------------------------------------------------------------
@@ -125,9 +153,10 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
 
 // -----------------------------------------------------------------------------
 
-void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
+void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
     ZeroStruct(this);
     auto scratch = Arena::create(memory_get_global_allocator(), 0);
+    defer { scratch.destroy(); };
 
     auto validation_layers = Array(
         (cchar*)"VK_LAYER_KHRONOS_validation"
@@ -336,6 +365,14 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
             }
         }
     }
+
+    depth_format = vk_find_supported_format(
+        physical_device,
+        Slice(VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT),
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT
+    );
+
     // create main render pass
     {
         auto color_attachment = VkAttachmentDescription{
@@ -348,27 +385,46 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
             .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
             .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
         };
+        auto depth_attachment = VkAttachmentDescription{
+            .format         = depth_format,
+            .samples        = VK_SAMPLE_COUNT_1_BIT,
+            .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
+            .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+            .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        };
         auto color_attachment_ref = VkAttachmentReference{
             .attachment = 0,
             .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         };
+        auto depth_attachment_ref = VkAttachmentReference{
+            .attachment = 1,
+            .layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        };
         auto subpass = VkSubpassDescription{
-            .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
-            .colorAttachmentCount = 1,
-            .pColorAttachments    = &color_attachment_ref,
+            .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
+            .colorAttachmentCount    = 1,
+            .pColorAttachments       = &color_attachment_ref,
+            .pDepthStencilAttachment = &depth_attachment_ref,
         };
         auto dependency = VkSubpassDependency{
             .srcSubpass    = VK_SUBPASS_EXTERNAL,
             .dstSubpass    = 0,
-            .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
             .srcAccessMask = 0,
-            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        };
+        VkAttachmentDescription attachments[] = {
+            color_attachment,
+            depth_attachment,
         };
         auto render_pass_info = VkRenderPassCreateInfo{
             .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-            .attachmentCount = 1,
-            .pAttachments    = &color_attachment,
+            .attachmentCount = 2,
+            .pAttachments    = attachments,
             .subpassCount    = 1,
             .pSubpasses      = &subpass,
             .dependencyCount = 1,
@@ -491,9 +547,8 @@ void Gfx::init(cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
     }
 #endif
 
+    swap_chain_drop_pool = VKDropPool::alloc(arena, 32);
     create_swap_chain();
-
-    scratch.destroy();
 }
 
 // -----------------------------------------------------------------------------
@@ -596,13 +651,17 @@ bool Gfx::poll() {
     return true;
 }
 
-void Gfx::wait_safe_quit() {
+void Gfx::wait_queue_idle() {
+    vkQueueWaitIdle(graphics_queue);
+}
+
+void Gfx::wait_device_idle() {
     vkDeviceWaitIdle(device);
 }
 
 // -----------------------------------------------------------------------------
 
-void Gfx::begin_frame() {
+VkCommandBuffer Gfx::main_render_pass_begin(vec4 color_clear, f32 depth_clear, u32 stencil_clear) {
 top:
     vkWaitForFences(device, 1, &in_flight_fences[cur_framebuffer_idx], VK_TRUE, UINT64_MAX);
 
@@ -648,14 +707,31 @@ top:
     };
     VKExpect(vkBeginCommandBuffer(buffer, &begin_info));
 
-    frame = {
-        .cmd_buffer        = buffer,
-        .framebuffer       = main_pass_framebuffers[cur_image_idx],
-        .framebuffer_index = cur_framebuffer_idx,
+    VkExtent2D extent = {(u32)screen_size.x, (u32)screen_size.y};
+
+    VkClearValue clear_values[] = {
+        {.color = {{color_clear.r, color_clear.g, color_clear.b, color_clear.a}}},
+        {.depthStencil = {depth_clear, stencil_clear}},
     };
+
+    auto render_pass_info = VkRenderPassBeginInfo{
+        .sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .renderPass        = main_pass,
+        .framebuffer       = main_pass_framebuffers[cur_image_idx],
+        .renderArea.offset = {0, 0},
+        .renderArea.extent = extent,
+        .clearValueCount   = 2,
+        .pClearValues      = clear_values,
+    };
+    vkCmdBeginRenderPass(buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+
+    return buffer;
 }
 
-void Gfx::end_frame() {
+void Gfx::main_render_pass_end() {
+    VkCommandBuffer& buffer = command_buffers[cur_framebuffer_idx];
+    vkCmdEndRenderPass(buffer);
+
 #if EDITOR
     ImGui::Render();
 
@@ -669,11 +745,11 @@ void Gfx::end_frame() {
         .clearValueCount = 0,
         .pClearValues    = nullptr,
     };
-    vkCmdBeginRenderPass(frame.cmd_buffer, &imgui_rp_begin, VK_SUBPASS_CONTENTS_INLINE);
-    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame.cmd_buffer);
-    vkCmdEndRenderPass(frame.cmd_buffer);
+    vkCmdBeginRenderPass(buffer, &imgui_rp_begin, VK_SUBPASS_CONTENTS_INLINE);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buffer);
+    vkCmdEndRenderPass(buffer);
 #endif
-    VKExpect(vkEndCommandBuffer(frame.cmd_buffer));
+    VKExpect(vkEndCommandBuffer(buffer));
 
     VkPipelineStageFlags wait_stages[] = {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
@@ -709,7 +785,6 @@ void Gfx::end_frame() {
     }
 
     cur_framebuffer_idx = (cur_framebuffer_idx + 1) % MAX_FRAMES_IN_FLIGHT;
-    ZeroStruct(&frame);
 }
 
 // -----------------------------------------------------------------------------
@@ -801,8 +876,10 @@ void Gfx::vk_create_image(u32 width, u32 height, VkFormat format, VkImageTiling 
 
     vkBindImageMemory(device, *out_image, *out_image_memory, 0);
 
-    drop_pool->push(vkDestroyImage, *out_image);
-    drop_pool->push(vkFreeMemory, *out_image_memory);
+    if (drop_pool) {
+        drop_pool->push(vkDestroyImage, *out_image);
+        drop_pool->push(vkFreeMemory, *out_image_memory);
+    }
 }
 
 VkCommandBuffer Gfx::vk_one_shot_command_buffer_begin() {
@@ -946,7 +1023,7 @@ forall(T) void VKDropPool::push(void (*drop)(VkDevice, T*, const VkAllocationCal
 }
 
 void VKDropPool::drop_all(VkDevice device) {
-    for (isize i = elems.count - 1; i >= 0; --i) {
+    for (isize i = (isize)elems.count - 1; i >= 0; --i) {
         elems.elems[i].drop(device, elems.elems[i].target, nullptr);
     }
     elems.count = 0;

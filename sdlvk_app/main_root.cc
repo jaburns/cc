@@ -69,19 +69,13 @@ i32 main() {
 
     *can_do_audio = true;
 
-    Gfx gfx;
-    gfx.init(APP_WINDOW_TITLE, audio_callback_trampoline);
+    Arena arena = Arena::create(memory_get_global_allocator(), 0);
 
-    Arena arena           = Arena::create(memory_get_global_allocator(), 0);
+    Gfx gfx;
+    gfx.init(&arena, APP_WINDOW_TITLE, audio_callback_trampoline);
+
     gfx.audio_player      = AudioPlayer::alloc(&arena);
     gfx.audio_callback_fn = app_get_audio_callback_fn();
-
-    {
-        vec2 a = vec2(1, 2);
-        vec2 b = vec2(3, 4);
-        f32  c = a.distance(b) * b.normalize().cross(a.normalize());
-        println(c);
-    }
 
     App* app = arena.alloc_one<App>();
     app_init(app, &gfx, arena);
@@ -105,9 +99,7 @@ i32 main() {
         f32 delta_time = (f32)((f64)timing_ticks_to_nanos(delta_ticks) / 1'000'000'000.);
         f64 time       = (f64)(timing_ticks_to_nanos(timing_get_ticks() - first_ticks) / 1000) / 1'000'000.;
 
-        gfx.begin_frame();
         app_frame(app, time, delta_time, tick_lerp);
-        gfx.end_frame();
 
 #if EDITOR
         if (!*rebuild_running) {
@@ -154,7 +146,7 @@ i32 main() {
 #endif
     }
 
-    gfx.wait_safe_quit();
+    gfx.wait_device_idle();
 
     *can_do_audio = false;
     while (*inside_audio);

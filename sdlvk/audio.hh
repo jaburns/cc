@@ -1,6 +1,7 @@
 #pragma once
 #include "inc.hh"
 namespace {
+// -----------------------------------------------------------------------------
 
 #define AUDIO_SAMPLE_RATE   44100
 #define AUDIO_MASTER_VOLUME .2
@@ -45,4 +46,5 @@ class AudioPlayer {
 
 typedef void (AudioPlayer::*AudioCallbackFn)(u8* out_stream, i32 out_stream_byte_len);
 
+// -----------------------------------------------------------------------------
 }  // namespace
