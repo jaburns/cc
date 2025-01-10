@@ -1,6 +1,5 @@
 #if EDITOR
 #include <dlfcn.h>
-#define app_dll_export extern "C"
 #include "../../src/main.hh"
 #include "watch_fs.h"
 #include "../sdlvk/inc.cc"

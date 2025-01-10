@@ -17,3 +17,9 @@
 #include "audio.hh"
 #include "gfx.hh"
 #include "pipeline.hh"
+
+#if EDITOR
+#define app_dll_export extern "C"
+#else
+#define app_dll_export static
+#endif

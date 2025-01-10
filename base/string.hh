@@ -1,6 +1,7 @@
 #pragma once
 #include "inc.hh"
 namespace {
+// -----------------------------------------------------------------------------
 
 void print_value(Vec<char>* out, cchar* value);
 void print_value(Vec<char>* out, char* value);
@@ -39,6 +40,8 @@ forall(T, ... Args) void x_log_print(T value, Args... args);
 #define log(...)
 #endif
 
+// -----------------------------------------------------------------------------
+
 struct Str {
     cchar* elems;
     usize  count;
@@ -68,13 +71,111 @@ struct Str {
 };
 void print_value(Vec<char>* out, Str value);
 
-#define Str(cstr_lit) Str{cstr_lit, sizeof(cstr_lit) - 1}
+#define StrLit(cstr_lit) Str{cstr_lit, sizeof(cstr_lit) - 1}
+
+// -----------------------------------------------------------------------------
 
 bool cstr_eq(cchar* a, cchar* b);
 
+// -----------------------------------------------------------------------------
+
+class StrSplitCharIter {
+  private:
+    bool   done;
+    char   split;
+    Str    target;
+    Str    item;
+    cchar* target_end_;
+    cchar* item_end_;
+
+  public:
+    static StrSplitCharIter start(Str target, char chr) {
+        auto ret        = StrSplitCharIter{};
+        ret.split       = chr;
+        ret.target      = target;
+        ret.item_end_   = target.elems - 1;
+        ret.target_end_ = target.elems + target.count;
+        ret.next();
+        return ret;
+    }
+    void next() {
+        item_end_++;
+        item.elems = item_end_;
+        if (item.elems >= target_end_) {
+            done = true;
+            return;
+        }
+        while (item_end_ < target_end_ && *item_end_ != split) {
+            item_end_++;
+        }
+        item.count = item_end_ - item.elems;
+    }
+    Str               operator*() { return item; }
+    bool              operator!=(StrSplitCharIter& other) { return !done; }
+    StrSplitCharIter& operator++() { return next(), *this; }
+};
+
+struct StrSplitChar : NoCopy {
+    Str  target;
+    char chr;
+    StrSplitChar(Str target, char chr) : target(target), chr(chr) {}
+    StrSplitCharIter begin() { return StrSplitCharIter::start(target, chr); }
+    StrSplitCharIter end() { return StrSplitCharIter{}; }
+};
+
+// -----------------------------------------------------------------------------
+
+class StrSplitWhitespaceIter {
+  private:
+    bool   done;
+    Str    target;
+    Str    item;
+    cchar* target_end_;
+    cchar* item_end_;
+
+  public:
+    static StrSplitWhitespaceIter start(Str target) {
+        auto ret        = StrSplitWhitespaceIter{};
+        ret.target      = target;
+        ret.item_end_   = target.elems;
+        ret.target_end_ = target.elems + target.count;
+        ret.next();
+        return ret;
+    }
+    void next() {
+        while (item_end_ < target_end_ && isspace(*item_end_)) {
+            item_end_++;
+        }
+        item.elems = item_end_;
+        if (item.elems >= target_end_) {
+            done = true;
+            return;
+        }
+        while (item_end_ < target_end_ && !isspace(*item_end_)) {
+            item_end_++;
+        }
+        item.count = item_end_ - item.elems;
+    }
+    Str                     operator*() { return item; }
+    bool                    operator!=(StrSplitWhitespaceIter& other) { return !done; }
+    StrSplitWhitespaceIter& operator++() { return next(), *this; }
+};
+
+struct StrSplitWhitespace : NoCopy {
+    Str target;
+    StrSplitWhitespace(Str target) : target(target) {}
+    StrSplitWhitespaceIter begin() { return StrSplitWhitespaceIter::start(target); }
+    StrSplitWhitespaceIter end() { return StrSplitWhitespaceIter{}; }
+};
+
+// -----------------------------------------------------------------------------
+
 struct U64PrintedWithCommas {
     u64 val;
+    U64PrintedWithCommas(u64 val) : val(val) {}
 };
 void print_value(Vec<char>* out, U64PrintedWithCommas value);
+
+// -----------------------------------------------------------------------------
 
 }  // namespace

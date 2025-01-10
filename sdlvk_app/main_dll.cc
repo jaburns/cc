@@ -1,9 +1,3 @@
-#if EDITOR
-#define app_dll_export extern "C"
-#else
-#define app_dll_export static
-#endif
-
 #include "../sdlvk/inc.hh"
 #include "../../src/main.hh"
 

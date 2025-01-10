@@ -30,8 +30,8 @@ generate() {
             local type="$(echo "$line" | tr -s ' ' '\t' | cut -f1)"
             local name="$(echo "$line" | tr -s ' ' '\t' | cut -f2 | tr -d ';')"
             >>/tmp/gen.h echo '{'
-            >>/tmp/gen.h echo "    .type   = Str(\"$type\"),"
-            >>/tmp/gen.h echo "    .name   = Str(\"$name\"),"
+            >>/tmp/gen.h echo "    .type   = StrLit(\"$type\"),"
+            >>/tmp/gen.h echo "    .name   = StrLit(\"$name\"),"
             >>/tmp/gen.h echo "    .size   = sizeof($type),"
             >>/tmp/gen.h echo "    .offset = offsetof($struct_name, $name),"
             >>/tmp/gen.h echo '},'
