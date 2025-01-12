@@ -186,28 +186,42 @@ u64 Str::parse_u64(i32 base) {
     char buffer[22];
     CopyArray(buffer, elems, min(21ul, count));
     buffer[count] = 0;
-    return strtoull(buffer, NULL, base);
+    return strtoull(buffer, nullptr, base);
 }
 
 i64 Str::parse_i64(i32 base) {
     char buffer[22];
     CopyArray(buffer, elems, min(21ul, count));
     buffer[count] = 0;
-    return strtoll(buffer, NULL, base);
+    return strtoll(buffer, nullptr, base);
 }
 
 u32 Str::parse_u32(i32 base) {
     char buffer[12];
     CopyArray(buffer, elems, min(11ul, count));
     buffer[count] = 0;
-    return strtoul(buffer, NULL, base);
+    return strtoul(buffer, nullptr, base);
 }
 
 i32 Str::parse_i32(i32 base) {
     char buffer[12];
     CopyArray(buffer, elems, min(11ul, count));
     buffer[count] = 0;
-    return strtol(buffer, NULL, base);
+    return strtol(buffer, nullptr, base);
+}
+
+f32 Str::parse_f32() {
+    char buffer[32];
+    CopyArray(buffer, elems, min(31ul, count));
+    buffer[count] = 0;
+    return strtof(buffer, nullptr);
+}
+
+f64 Str::parse_f64() {
+    char buffer[32];
+    CopyArray(buffer, elems, min(31ul, count));
+    buffer[count] = 0;
+    return strtod(buffer, nullptr);
 }
 
 bool cstr_eq(cchar* a, cchar* b) {

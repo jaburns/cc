@@ -2,8 +2,7 @@
 #include "inc.hh"
 namespace {
 
-#define MEMORY_RESERVE_SIZE       32_gb
-#define MEMORY_DEFAULT_BLOCK_SIZE 1_mb
+#define MEMORY_RESERVE_SIZE 32_gb
 
 struct MemoryReservation {
     u8*   base;
@@ -12,7 +11,7 @@ struct MemoryReservation {
 };
 
 struct MemoryAllocator {
-    MemoryReservation (*memory_reserve)(usize block_size);
+    MemoryReservation (*memory_reserve)();
     void              (*memory_commit_size)(MemoryReservation* reservation, usize total_size);
     void              (*memory_release)(MemoryReservation* reservation);
     void*             (*memory_heap_alloc)(usize size);
@@ -21,4 +20,4 @@ struct MemoryAllocator {
 
 MemoryAllocator memory_get_global_allocator();
 
-}
+}  // namespace

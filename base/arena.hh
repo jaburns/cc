@@ -21,7 +21,7 @@ class Arena {
   public:
     MemoryAllocator allocator = {};
 
-    static Arena create(MemoryAllocator allocator, usize block_size);
+    static Arena create(MemoryAllocator allocator);
     void         destroy();
 
     ArenaMark mark();
@@ -45,7 +45,7 @@ class ScratchArena : NoCopy {
     ~ScratchArena();
 };
 
-void arena_scratch_thread_local_create(MemoryAllocator allocator, usize block_size);
+void arena_scratch_thread_local_create(MemoryAllocator allocator);
 void arena_scratch_thread_local_destroy();
 
 }  // namespace

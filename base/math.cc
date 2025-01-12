@@ -280,6 +280,10 @@ void print_value(Vec<char>* out, vec3a v) {
 // -----------------------------------------------------------------------------
 // vec4
 
+f32 vec4::dot(vec4 rhs) {
+    return f32x4_add_across(f32x4_mul(vector, rhs.vector));
+}
+
 vec4 operator+(vec4 lhs, vec4 rhs) {
     return vec4_from_f32x4(f32x4_add(lhs.vector, rhs.vector));
 }
@@ -507,6 +511,15 @@ mat4& mat4::apply_translation(vec3a translate) {
 mat4 operator*(mat4 lhs, mat4 rhs) {
     mat4 ret    = lhs;
     return ret *= rhs;
+}
+
+vec4 mat4::mul_vec4(vec4 rhs) {
+    return vec4(
+        a.dot(rhs),
+        b.dot(rhs),
+        c.dot(rhs),
+        d.dot(rhs)
+    );
 }
 
 mat4& operator*=(mat4& lhs, mat4 rhs) {

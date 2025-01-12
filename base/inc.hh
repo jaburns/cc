@@ -25,9 +25,9 @@
 
 #include "defs.hh"
 #include "timing.hh"
+#include "memory.hh"
 #include "simd.hh"
 #include "array.hh"
-#include "memory.hh"
 #include "arena.hh"
 #include "string.hh"
 #include "math.hh"

@@ -6,8 +6,8 @@ global thread_local Arena g_arena_scratch[2];
 
 // -----------------------------------------------------------------------------
 
-Arena Arena::create(MemoryAllocator allocator, usize block_size) {
-    MemoryReservation reservation = allocator.memory_reserve(block_size);
+Arena Arena::create(MemoryAllocator allocator) {
+    MemoryReservation reservation = allocator.memory_reserve();
 
     Arena ret           = {};
     ret.allocator       = allocator;
@@ -50,10 +50,10 @@ void Arena::clear() {
 forall(T) T* Arena::alloc_one() {
     usize size = sizeof(T);
 
-    cur     = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
-    u8* ret = cur;
-    allocator.memory_commit_size(&reservation, (cur - reservation.base) + size);
-    cur += size;
+    cur      = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
+    u8* ret  = cur;
+    cur     += size;
+    allocator.memory_commit_size(&reservation, cur - reservation.base);
 
     return (T*)memset(ret, 0, size);
 }
@@ -69,10 +69,10 @@ forall(T) Slice<T> Arena::alloc_many(usize count) {
 
     usize size = sizeof(T) * count;
 
-    cur     = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
-    u8* ret = cur;
-    allocator.memory_commit_size(&reservation, (cur - reservation.base) + size);
-    cur += size;
+    cur      = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
+    u8* ret  = cur;
+    cur     += size;
+    allocator.memory_commit_size(&reservation, cur - reservation.base);
 
     Slice<T> slice = {};
     slice.count    = count;
@@ -92,9 +92,9 @@ forall(T, U) T* Arena::alloc_resource(U* context, void (*drop)(U*, T*)) {
 
 // -----------------------------------------------------------------------------
 
-void arena_scratch_thread_local_create(MemoryAllocator allocator, usize block_size) {
-    g_arena_scratch[0] = Arena::create(allocator, block_size);
-    g_arena_scratch[1] = Arena::create(allocator, block_size);
+void arena_scratch_thread_local_create(MemoryAllocator allocator) {
+    g_arena_scratch[0] = Arena::create(allocator);
+    g_arena_scratch[1] = Arena::create(allocator);
 }
 
 void arena_scratch_thread_local_destroy() {

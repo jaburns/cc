@@ -1,13 +1,15 @@
 #include "inc.hh"
 namespace {
 
-MemoryReservation memory_reserve(usize block_size) {
+global usize g_memory_page_size = {0};
+
+MemoryReservation memory_reserve() {
     void* ptr = mmap(NULL, MEMORY_RESERVE_SIZE, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (ptr == MAP_FAILED) Panic("memory_reserve mmap failed");
 
     return {
         .base             = (u8*)ptr,
-        .block_size       = block_size ? block_size : MEMORY_DEFAULT_BLOCK_SIZE,
+        .block_size       = g_memory_page_size,
         .blocks_committed = 0,
     };
 }
@@ -52,6 +54,9 @@ void memory_heap_free(void* ptr) {
 }
 
 MemoryAllocator memory_get_global_allocator() {
+    if (!g_memory_page_size) {
+        g_memory_page_size = sysconf(_SC_PAGESIZE);
+    }
     return {
         .memory_reserve     = memory_reserve,
         .memory_commit_size = memory_commit_size,

@@ -72,7 +72,7 @@ void root_main() {
 
     *can_do_audio = true;
 
-    Arena arena = Arena::create(memory_get_global_allocator(), 0);
+    Arena arena = Arena::create(memory_get_global_allocator());
 
     Gfx gfx;
     gfx.init(&arena, APP_WINDOW_TITLE, audio_callback_trampoline);
@@ -92,15 +92,16 @@ void root_main() {
         u64 delta_ticks = cur_ticks - last_ticks;
         last_ticks      = cur_ticks;
 
+        f32 delta_time = (f32)((f64)timing_ticks_to_nanos(delta_ticks) / 1'000'000'000.);
+        f64 time       = (f64)(timing_ticks_to_nanos(timing_get_ticks() - first_ticks) / 1000) / 1'000'000.;
+
         tick_acc_nanos += timing_ticks_to_nanos(delta_ticks);
         while (tick_acc_nanos > APP_NANOS_PER_TICK) {
             tick_acc_nanos -= APP_NANOS_PER_TICK;
             app_tick(app);
         }
 
-        f32 tick_lerp  = (f32)((f64)tick_acc_nanos / (f64)APP_NANOS_PER_TICK);
-        f32 delta_time = (f32)((f64)timing_ticks_to_nanos(delta_ticks) / 1'000'000'000.);
-        f64 time       = (f64)(timing_ticks_to_nanos(timing_get_ticks() - first_ticks) / 1000) / 1'000'000.;
+        f32 tick_lerp = (f32)((f64)tick_acc_nanos / (f64)APP_NANOS_PER_TICK);
 
         app_frame(app, time, delta_time, tick_lerp);
 

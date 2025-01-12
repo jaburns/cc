@@ -155,7 +155,7 @@ VKAPI_ATTR VkBool32 VKAPI_CALL vk_debug_callback(
 
 void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_callback) {
     ZeroStruct(this);
-    auto scratch = Arena::create(memory_get_global_allocator(), 0);
+    Arena scratch = Arena::create(memory_get_global_allocator());
     defer { scratch.destroy(); };
 
     cchar* validation_layers[] = {
@@ -913,7 +913,7 @@ void Gfx::vk_one_shot_command_buffer_submit(VkCommandBuffer cmd_buffer) {
 }
 
 void Gfx::vk_copy_buffer(VkBuffer dest, VkBuffer src, VkDeviceSize size) {
-    auto cmd_buffer = vk_one_shot_command_buffer_begin();
+    VkCommandBuffer cmd_buffer = vk_one_shot_command_buffer_begin();
 
     auto copy_region = VkBufferCopy{.size = size};
     vkCmdCopyBuffer(cmd_buffer, src, dest, 1, &copy_region);
@@ -922,7 +922,7 @@ void Gfx::vk_copy_buffer(VkBuffer dest, VkBuffer src, VkDeviceSize size) {
 }
 
 void Gfx::vk_copy_buffer_to_image(VkImage dest, VkBuffer src, u32 width, u32 height) {
-    auto cmd_buffer = vk_one_shot_command_buffer_begin();
+    VkCommandBuffer cmd_buffer = vk_one_shot_command_buffer_begin();
 
     auto region = VkBufferImageCopy{
         .bufferOffset                    = 0,
@@ -941,7 +941,7 @@ void Gfx::vk_copy_buffer_to_image(VkImage dest, VkBuffer src, u32 width, u32 hei
 }
 
 void Gfx::vk_transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) {
-    auto cmd_buffer = vk_one_shot_command_buffer_begin();
+    VkCommandBuffer cmd_buffer = vk_one_shot_command_buffer_begin();
 
     auto barrier = VkImageMemoryBarrier{
         .sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,

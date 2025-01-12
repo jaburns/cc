@@ -92,6 +92,33 @@ forall(T) void print_value(Vec<char>* out, This& vec) {
 
 #undef This
 // -----------------------------------------------------------------------------
+#define This GrowableVec<T>
+
+forall(T) This::GrowableVec(MemoryAllocator allocator) {
+    this->allocator = allocator;
+    reservation     = allocator.memory_reserve();
+    elems           = (T*)reservation.base;
+    count           = 0;
+}
+
+forall(T) This::~GrowableVec() {
+    allocator.memory_release(&reservation);
+}
+
+forall(T) T* This::push() {
+    T* ret = &elems[count++];
+    allocator.memory_commit_size(&reservation, sizeof(T) * count);
+    return ret;
+}
+
+forall(T) Slice<T> This::copy_into_arena(Arena* arena) {
+    Slice<T> ret = arena->alloc_many<T>(count);
+    CopyArray(ret.elems, elems, count);
+    return ret;
+}
+
+#undef This
+// -----------------------------------------------------------------------------
 #define Template template <typename T, usize COUNT>
 #define This     Array<T, COUNT>
 

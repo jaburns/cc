@@ -67,6 +67,23 @@ forall(T) void print_value(Vec<char>* out, Slice<T>& slice);
 forall(T) void print_value(Vec<char>* out, Vec<T>& vec);
 
 // -----------------------------------------------------------------------------
+
+forall(T) class GrowableVec : NoCopy {
+    MemoryAllocator   allocator   = {};
+    MemoryReservation reservation = {};
+
+  public:
+    T*    elems = {};
+    usize count = {};
+
+    GrowableVec(MemoryAllocator allocator);
+    ~GrowableVec();
+
+    T*       push();
+    Slice<T> copy_into_arena(Arena* arena);
+};
+
+// -----------------------------------------------------------------------------
 #define Template template <typename T, usize COUNT>
 
 Template struct Array {

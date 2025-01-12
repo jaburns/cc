@@ -120,6 +120,20 @@ void print_value(Vec<char>* out, vec2 v);
 
 // -----------------------------------------------------------------------------
 
+struct uvec2 {
+    union {
+        struct {
+            u32 x, y;
+        };
+        u32x2 vector;
+    };
+};
+
+#define uvec2(x_, y_)        (uvec2{.vector = {(u32)(x_), (u32)(y_)}})
+#define uvec2_from_u32x2(v_) (uvec2{.vector = (v_)})
+
+// -----------------------------------------------------------------------------
+
 struct vec3 {
     f32 x, y, z;
 
@@ -179,6 +193,14 @@ struct ivec3 {
 
 // -----------------------------------------------------------------------------
 
+struct uvec3 {
+    u32 x, y, z;
+};
+
+#define uvec3(x_, y_, z_) (uvec3{(u32)(x_), (u32)(y_), (u32)(z_)})
+
+// -----------------------------------------------------------------------------
+
 struct vec4 {
     union {
         struct {
@@ -189,6 +211,10 @@ struct vec4 {
         };
         f32x4 vector;
     };
+
+    f32 dot(vec4 rhs);
+
+    vec3a xyz() { return vec3a(x, y, z); }
 };
 
 vec4  operator+(vec4 lhs, vec4 rhs);
@@ -230,6 +256,21 @@ struct ivec4 {
 };
 
 #define ivec4(x_, y_, z_, w_) (ivec4{.vector = {(i32)(x_), (i32)(y_), (i32)(z_), (i32)(w_)}})
+#define ivec4_from_i32x4(v_)  (ivec4{.vector = (v_)})
+
+// -----------------------------------------------------------------------------
+
+struct uvec4 {
+    union {
+        struct {
+            u32 x, y, z, w;
+        };
+        u32x4 vector;
+    };
+};
+
+#define uvec4(x_, y_, z_, w_) (uvec4{.vector = {(u32)(x_), (u32)(y_), (u32)(z_), (u32)(w_)}})
+#define uvec4_from_u32x4(v_)  (uvec4{.vector = (v_)})
 
 // -----------------------------------------------------------------------------
 
@@ -260,6 +301,8 @@ struct mat4 {
 
     mat4& apply_scale(vec3a scale);
     mat4& apply_translation(vec3a translate);
+
+    vec4 mul_vec4(vec4 rhs);
 };
 
 mat4  operator*(mat4 lhs, mat4 rhs);

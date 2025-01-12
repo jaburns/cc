@@ -68,6 +68,8 @@ struct Str {
     i64 parse_i64(i32 base);
     u32 parse_u32(i32 base);
     i32 parse_i32(i32 base);
+    f32 parse_f32();
+    f64 parse_f64();
 };
 void print_value(Vec<char>* out, Str value);
 

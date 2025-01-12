@@ -1,8 +1,8 @@
 #include "inc.hh"
 
 #include "timing.cc"
-#include "array.cc"
 #include "memory.cc"
+#include "array.cc"
 #include "arena.cc"
 #include "string.cc"
 #include "math.cc"
