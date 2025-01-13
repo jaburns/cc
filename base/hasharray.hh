@@ -9,15 +9,15 @@ forall(K, V) class HashArray {
 
     friend class HashArrayIter<K, V>;
 
-    u32* hashes     = {};
-    K*   keys       = {};
-    V*   values     = {};
-    V*   value_stub = {};
+    u32* hashes;
+    K*   keys;
+    V*   values;
+    V*   value_stub;
 
   public:
-    u32 capacity  = {};
-    u32 max_elems = {};
-    u32 count     = {};
+    u32 capacity;
+    u32 max_elems;
+    u32 count;
 
     static HashArray alloc_with_cap(Arena* arena, u32 capacity);
     static HashArray alloc_with_elems(Arena* arena, u32 max_elems);
@@ -46,10 +46,10 @@ forall(K, V) class HashArrayIter {
     };
 
   private:
-    u32              idx    = {};
-    HashArray<K, V>* target = {};
-    Entry            entry  = {};
-    bool             done   = {};
+    u32              idx;
+    HashArray<K, V>* target;
+    Entry            entry;
+    bool             done;
 
   public:
     Entry          operator*() { return entry; }

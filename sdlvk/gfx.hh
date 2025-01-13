@@ -60,6 +60,10 @@ class Gfx {
     VkRenderPass                                    imgui_render_pass;
     InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> imgui_framebuffers;
 #endif
+    // VkImage        color_image;
+    // VkImageView    color_image_view;
+    // VkDeviceMemory color_image_memory;
+
     VkImage        depth_image;
     VkImageView    depth_image_view;
     VkDeviceMemory depth_image_memory;
@@ -74,6 +78,8 @@ class Gfx {
 
   public:
     u32 cur_framebuffer_idx;
+
+    // VkSampleCountFlagBits msaa_samples;
 
     VkInstance       instance;
     VkPhysicalDevice physical_device;
@@ -100,10 +106,10 @@ class Gfx {
     void wait_device_idle();
 
     void vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkBuffer* out_buffer, VkDeviceMemory* out_buffer_memory);
-    void vk_create_image(u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkImage* out_image, VkDeviceMemory* out_image_memory);
+    void vk_create_image(u32 width, u32 height, u32 mip_levels, VkSampleCountFlagBits num_samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkImage* out_image, VkDeviceMemory* out_image_memory);
     void vk_copy_buffer(VkBuffer dest, VkBuffer src, VkDeviceSize size);
     void vk_copy_buffer_to_image(VkImage dest, VkBuffer src, u32 width, u32 height);
-    void vk_transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout);
+    void vk_transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, u32 mip_levels);
 
     VkCommandBuffer vk_one_shot_command_buffer_begin();
     void            vk_one_shot_command_buffer_submit(VkCommandBuffer cmd_buffer);

@@ -2,6 +2,22 @@
 namespace {
 // -----------------------------------------------------------------------------
 
+VkSampleCountFlagBits vk_get_max_usable_sample_count(VkPhysicalDevice physical_device) {
+    VkPhysicalDeviceProperties props;
+    vkGetPhysicalDeviceProperties(physical_device, &props);
+
+    VkSampleCountFlags counts = props.limits.framebufferColorSampleCounts & props.limits.framebufferDepthSampleCounts;
+    if (counts & VK_SAMPLE_COUNT_64_BIT) return VK_SAMPLE_COUNT_64_BIT;
+    if (counts & VK_SAMPLE_COUNT_32_BIT) return VK_SAMPLE_COUNT_32_BIT;
+    if (counts & VK_SAMPLE_COUNT_16_BIT) return VK_SAMPLE_COUNT_16_BIT;
+    if (counts & VK_SAMPLE_COUNT_8_BIT) return VK_SAMPLE_COUNT_8_BIT;
+    if (counts & VK_SAMPLE_COUNT_4_BIT) return VK_SAMPLE_COUNT_4_BIT;
+    if (counts & VK_SAMPLE_COUNT_2_BIT) return VK_SAMPLE_COUNT_2_BIT;
+    return VK_SAMPLE_COUNT_1_BIT;
+}
+
+// -----------------------------------------------------------------------------
+
 void Gfx::create_swap_chain() {
     vkDeviceWaitIdle(device);
     swap_chain_drop_pool.drop_all(device);
@@ -21,7 +37,7 @@ void Gfx::create_swap_chain() {
         image_count = surface_capabilities.maxImageCount;
     }
 
-    auto create_info = VkSwapchainCreateInfoKHR{
+    VkSwapchainCreateInfoKHR create_info = {
         .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface          = surface,
         .minImageCount    = image_count,
@@ -46,7 +62,7 @@ void Gfx::create_swap_chain() {
 
     swap_chain_image_views.count = swap_chain_images.count;
     for (u32 i = 0; i < swap_chain_image_views.count; ++i) {
-        auto create_info = VkImageViewCreateInfo{
+        VkImageViewCreateInfo create_info = {
             .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .image                           = swap_chain_images[i],
             .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
@@ -61,14 +77,17 @@ void Gfx::create_swap_chain() {
         swap_chain_drop_pool.push(vkDestroyImageView, swap_chain_image_views[i]);
     }
 
+    // depth
+
     vk_create_image(
-        extent.width, extent.height, depth_format,
+        extent.width, extent.height, 1, VK_SAMPLE_COUNT_1_BIT,
+        depth_format,
         VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         &swap_chain_drop_pool, &depth_image, &depth_image_memory
     );
-    auto depth_view_info = VkImageViewCreateInfo{
+    VkImageViewCreateInfo depth_view_info = {
         .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
         .image                           = depth_image,
         .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
@@ -82,16 +101,18 @@ void Gfx::create_swap_chain() {
     VKExpect(vkCreateImageView(device, &depth_view_info, nullptr, &depth_image_view));
     swap_chain_drop_pool.push(vkDestroyImageView, depth_image_view);
 
+    // framebuffers
+
     main_pass_framebuffers.count = swap_chain_image_views.count;
     for (u32 i = 0; i < main_pass_framebuffers.count; ++i) {
         VkImageView attachments[] = {
             swap_chain_image_views.elems[i],
             depth_image_view,
         };
-        auto framebuffer_info = VkFramebufferCreateInfo{
+        VkFramebufferCreateInfo framebuffer_info = {
             .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass      = main_pass,
-            .attachmentCount = 2,
+            .attachmentCount = RawArrayLen(attachments),
             .pAttachments    = attachments,
             .width           = extent.width,
             .height          = extent.height,
@@ -107,7 +128,7 @@ void Gfx::create_swap_chain() {
         VkImageView attachments[] = {
             swap_chain_image_views.elems[i],
         };
-        auto framebuffer_info = VkFramebufferCreateInfo{
+        VkFramebufferCreateInfo framebuffer_info = {
             .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             .renderPass      = imgui_render_pass,
             .attachmentCount = 1,
@@ -218,16 +239,16 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         auto available_validation_layers = vk_get_slice<VkLayerProperties, vkEnumerateInstanceLayerProperties>(&scratch);
         Assert(available_validation_layers.contains_all<cchar*>(
             SliceFromRawArray(cchar*, validation_layers),
-            [](auto a, auto b) { return cstr_eq(a->layerName, *b); }
+            [](VkLayerProperties* a, cchar** b) { return cstr_eq(a->layerName, *b); }
         ));
 
         auto available_extensions = vk_get_slice<VkExtensionProperties, vkEnumerateInstanceExtensionProperties>(&scratch, nullptr);
         Assert(available_extensions.contains_all<cchar*>(
             SliceFromRawArray(cchar*, instance_extensions),
-            [](auto a, auto b) { return cstr_eq(a->extensionName, *b); }
+            [](VkExtensionProperties* a, cchar** b) { return cstr_eq(a->extensionName, *b); }
         ));
 
-        auto app_info = VkApplicationInfo{
+        VkApplicationInfo app_info = {
             .sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .pApplicationName   = window_title,
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
@@ -235,7 +256,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .engineVersion      = VK_MAKE_VERSION(1, 0, 0),
             .apiVersion         = VK_API_VERSION_1_2,
         };
-        auto create_info = VkInstanceCreateInfo{
+        VkInstanceCreateInfo create_info = {
             .sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
             .pApplicationInfo        = &app_info,
             .enabledExtensionCount   = RawArrayLen(instance_extensions),
@@ -243,7 +264,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .flags                   = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
         };
 
-        auto debug_create_info = VkDebugUtilsMessengerCreateInfoEXT{};
+        VkDebugUtilsMessengerCreateInfoEXT debug_create_info = {};
 
         if (ENABLE_VALIDATION_LAYERS) {
             create_info.enabledLayerCount   = RawArrayLen(validation_layers);
@@ -279,7 +300,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         Slice<VkSurfaceFormatKHR> surface_formats = {};
 
         i32 present_queue_idx;
-        for (auto& pdevice : physical_devices) {
+        for (VkPhysicalDevice& pdevice : physical_devices) {
             physical_device    = pdevice;
             graphics_queue_idx = -1;
             present_queue_idx  = -1;
@@ -288,7 +309,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
 
             bool all_supported = available_extensions.contains_all<cchar*>(
                 SliceFromRawArray(cchar*, device_extensions),
-                [](auto a, auto b) { return cstr_eq(a->extensionName, *b); }
+                [](VkExtensionProperties* a, cchar** b) { return cstr_eq(a->extensionName, *b); }
             );
             if (!all_supported) continue;
 
@@ -316,19 +337,19 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         }
         if (graphics_queue_idx < 0) Panic("Failed to find a suitable GPU");
 
-        auto present_queue_create_info = VkDeviceQueueCreateInfo{
+        VkDeviceQueueCreateInfo present_queue_create_info = {
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = (u32)present_queue_idx,
             .queueCount       = 1,
             .pQueuePriorities = &queue_priority,
         };
-        auto gfx_queue_create_info = VkDeviceQueueCreateInfo{
+        VkDeviceQueueCreateInfo gfx_queue_create_info = {
             .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             .queueFamilyIndex = (u32)graphics_queue_idx,
             .queueCount       = 1,
             .pQueuePriorities = &queue_priority,
         };
-        auto device_features = VkPhysicalDeviceFeatures{
+        VkPhysicalDeviceFeatures device_features = {
             .samplerAnisotropy = VK_TRUE,
         };
 
@@ -337,7 +358,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             present_queue_create_info,
         };
 
-        auto create_info = VkDeviceCreateInfo{
+        VkDeviceCreateInfo create_info = {
             .sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
             .pQueueCreateInfos       = infoz,
             .queueCreateInfoCount    = present_queue_idx == graphics_queue_idx ? 1u : 2u,
@@ -366,12 +387,14 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         }
     }
 
+    // msaa_samples = vk_get_max_usable_sample_count(physical_device);
+
     VkFormat formats[] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
     depth_format       = vk_find_supported_format(physical_device, SliceFromRawArray(VkFormat, formats), VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
     // create main render pass
     {
-        auto color_attachment = VkAttachmentDescription{
+        VkAttachmentDescription color_attachment = {
             .format         = surface_format.format,
             .samples        = VK_SAMPLE_COUNT_1_BIT,
             .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -381,7 +404,11 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
             .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
         };
-        auto depth_attachment = VkAttachmentDescription{
+        VkAttachmentReference color_attachment_ref = {
+            .attachment = 0,
+            .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        };
+        VkAttachmentDescription depth_attachment = {
             .format         = depth_format,
             .samples        = VK_SAMPLE_COUNT_1_BIT,
             .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
@@ -391,21 +418,18 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
             .finalLayout    = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         };
-        auto color_attachment_ref = VkAttachmentReference{
-            .attachment = 0,
-            .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-        };
-        auto depth_attachment_ref = VkAttachmentReference{
+        VkAttachmentReference depth_attachment_ref = {
             .attachment = 1,
             .layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         };
-        auto subpass = VkSubpassDescription{
+
+        VkSubpassDescription subpass = {
             .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount    = 1,
             .pColorAttachments       = &color_attachment_ref,
             .pDepthStencilAttachment = &depth_attachment_ref,
         };
-        auto dependency = VkSubpassDependency{
+        VkSubpassDependency dependency = {
             .srcSubpass    = VK_SUBPASS_EXTERNAL,
             .dstSubpass    = 0,
             .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
@@ -413,13 +437,14 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
             .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
         };
+
         VkAttachmentDescription attachments[] = {
             color_attachment,
             depth_attachment,
         };
-        auto render_pass_info = VkRenderPassCreateInfo{
+        VkRenderPassCreateInfo render_pass_info = {
             .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-            .attachmentCount = 2,
+            .attachmentCount = RawArrayLen(attachments),
             .pAttachments    = attachments,
             .subpassCount    = 1,
             .pSubpasses      = &subpass,
@@ -430,14 +455,14 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
     }
     // create command pool and presentation sync objects
     {
-        auto pool_info = VkCommandPoolCreateInfo{
+        VkCommandPoolCreateInfo pool_info = {
             .sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             .flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
             .queueFamilyIndex = (u32)graphics_queue_idx,
         };
         VKExpect(vkCreateCommandPool(device, &pool_info, nullptr, &command_pool));
 
-        auto alloc_info = VkCommandBufferAllocateInfo{
+        VkCommandBufferAllocateInfo alloc_info = {
             .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
             .commandPool        = command_pool,
             .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -445,10 +470,10 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         };
         VKExpect(vkAllocateCommandBuffers(device, &alloc_info, command_buffers.elems));
 
-        auto semaphore_info = VkSemaphoreCreateInfo{
+        VkSemaphoreCreateInfo semaphore_info = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
         };
-        auto fence_info = VkFenceCreateInfo{
+        VkFenceCreateInfo fence_info = {
             .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
             .flags = VK_FENCE_CREATE_SIGNALED_BIT,
         };
@@ -461,7 +486,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
 #if EDITOR
     // create imgui renderpass and init imgui
     {
-        auto color_attachment = VkAttachmentDescription{
+        VkAttachmentDescription color_attachment = {
             .format         = surface_format.format,
             .samples        = VK_SAMPLE_COUNT_1_BIT,
             .loadOp         = VK_ATTACHMENT_LOAD_OP_LOAD,
@@ -471,16 +496,16 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .initialLayout  = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
         };
-        auto color_attachment_ref = VkAttachmentReference{
+        VkAttachmentReference color_attachment_ref = {
             .attachment = 0,
             .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
         };
-        auto subpass = VkSubpassDescription{
+        VkSubpassDescription subpass = {
             .pipelineBindPoint    = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount = 1,
             .pColorAttachments    = &color_attachment_ref,
         };
-        auto dependency = VkSubpassDependency{
+        VkSubpassDependency dependency = {
             .srcSubpass    = VK_SUBPASS_EXTERNAL,
             .dstSubpass    = 0,
             .srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -488,7 +513,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
             .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
         };
-        auto render_pass_info = VkRenderPassCreateInfo{
+        VkRenderPassCreateInfo render_pass_info = {
             .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
             .attachmentCount = 1,
             .pAttachments    = &color_attachment,
@@ -526,7 +551,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         VkDescriptorPool imgui_pool;
         VKExpect(vkCreateDescriptorPool(device, &pool_info, nullptr, &imgui_pool));
 
-        auto init_info = ImGui_ImplVulkan_InitInfo{
+        ImGui_ImplVulkan_InitInfo init_info = {
             .Instance       = instance,
             .PhysicalDevice = physical_device,
             .Device         = device,
@@ -671,7 +696,7 @@ top:
         {
             VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT};
 
-            auto dummy_submit_info = VkSubmitInfo{
+            VkSubmitInfo dummy_submit_info = {
                 .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                 .waitSemaphoreCount   = 1,
                 .pWaitSemaphores      = &image_available_semaphores[cur_framebuffer_idx],
@@ -696,7 +721,7 @@ top:
     auto& buffer = command_buffers[cur_framebuffer_idx];
     vkResetCommandBuffer(buffer, 0);
 
-    auto begin_info = VkCommandBufferBeginInfo{
+    VkCommandBufferBeginInfo begin_info = {
         .sType            = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags            = 0,
         .pInheritanceInfo = nullptr,
@@ -710,7 +735,7 @@ top:
         {.depthStencil = {depth_clear, stencil_clear}},
     };
 
-    auto render_pass_info = VkRenderPassBeginInfo{
+    VkRenderPassBeginInfo render_pass_info = {
         .sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass        = main_pass,
         .framebuffer       = main_pass_framebuffers[cur_image_idx],
@@ -733,7 +758,7 @@ void Gfx::main_render_pass_end() {
 
     VkExtent2D extent = {(u32)screen_size.x, (u32)screen_size.y};
 
-    auto imgui_rp_begin = VkRenderPassBeginInfo{
+    VkRenderPassBeginInfo imgui_rp_begin = {
         .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass      = imgui_render_pass,
         .framebuffer     = imgui_framebuffers[cur_image_idx],
@@ -750,7 +775,7 @@ void Gfx::main_render_pass_end() {
     VkPipelineStageFlags wait_stages[] = {
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
     };
-    auto submit_info = VkSubmitInfo{
+    VkSubmitInfo submit_info = {
         .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount   = 1,
         .pWaitSemaphores      = &image_available_semaphores[cur_framebuffer_idx],
@@ -762,7 +787,7 @@ void Gfx::main_render_pass_end() {
     };
     VKExpect(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fences[cur_framebuffer_idx]));
 
-    auto present_info = VkPresentInfoKHR{
+    VkPresentInfoKHR present_info = {
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
         .pWaitSemaphores    = &render_finished_semaphores[cur_framebuffer_idx],
@@ -786,7 +811,7 @@ void Gfx::main_render_pass_end() {
 // -----------------------------------------------------------------------------
 
 void Gfx::vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkBuffer* out_buffer, VkDeviceMemory* out_buffer_memory) {
-    auto create_info = VkBufferCreateInfo{
+    VkBufferCreateInfo create_info = {
         .sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .size        = size,  // sizeof(Vertex) * vertices.count,
         .usage       = usage,
@@ -812,7 +837,7 @@ void Gfx::vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemory
         }
     }
 
-    auto alloc_info = VkMemoryAllocateInfo{
+    VkMemoryAllocateInfo alloc_info = {
         .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize  = mem_requirements.size,
         .memoryTypeIndex = mem_type_idx,
@@ -826,20 +851,20 @@ void Gfx::vk_create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemory
     drop_pool->push(vkFreeMemory, *out_buffer_memory);
 }
 
-void Gfx::vk_create_image(u32 width, u32 height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkImage* out_image, VkDeviceMemory* out_image_memory) {
-    auto image_info = VkImageCreateInfo{
+void Gfx::vk_create_image(u32 width, u32 height, u32 mip_levels, VkSampleCountFlagBits num_samples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VKDropPool* drop_pool, VkImage* out_image, VkDeviceMemory* out_image_memory) {
+    VkImageCreateInfo image_info = {
         .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .imageType     = VK_IMAGE_TYPE_2D,
         .extent.width  = width,
         .extent.height = height,
         .extent.depth  = 1,
-        .mipLevels     = 1,
+        .mipLevels     = mip_levels,
         .arrayLayers   = 1,
         .format        = format,
         .tiling        = tiling,
         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .usage         = usage,
-        .samples       = VK_SAMPLE_COUNT_1_BIT,
+        .samples       = num_samples,
         .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
     };
     VKExpect(vkCreateImage(device, &image_info, nullptr, out_image));
@@ -862,7 +887,7 @@ void Gfx::vk_create_image(u32 width, u32 height, VkFormat format, VkImageTiling 
         }
     }
 
-    auto alloc_info = VkMemoryAllocateInfo{
+    VkMemoryAllocateInfo alloc_info = {
         .sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .allocationSize  = mem_requirements.size,
         .memoryTypeIndex = mem_type_idx,
@@ -879,7 +904,7 @@ void Gfx::vk_create_image(u32 width, u32 height, VkFormat format, VkImageTiling 
 }
 
 VkCommandBuffer Gfx::vk_one_shot_command_buffer_begin() {
-    auto alloc_info = VkCommandBufferAllocateInfo{
+    VkCommandBufferAllocateInfo alloc_info = {
         .sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
         .commandPool        = command_pool,
@@ -889,7 +914,7 @@ VkCommandBuffer Gfx::vk_one_shot_command_buffer_begin() {
     VkCommandBuffer cmd_buffer;
     vkAllocateCommandBuffers(device, &alloc_info, &cmd_buffer);
 
-    auto begin_info = VkCommandBufferBeginInfo{
+    VkCommandBufferBeginInfo begin_info = {
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
@@ -915,7 +940,7 @@ void Gfx::vk_one_shot_command_buffer_submit(VkCommandBuffer cmd_buffer) {
 void Gfx::vk_copy_buffer(VkBuffer dest, VkBuffer src, VkDeviceSize size) {
     VkCommandBuffer cmd_buffer = vk_one_shot_command_buffer_begin();
 
-    auto copy_region = VkBufferCopy{.size = size};
+    VkBufferCopy copy_region = {.size = size};
     vkCmdCopyBuffer(cmd_buffer, src, dest, 1, &copy_region);
 
     vk_one_shot_command_buffer_submit(cmd_buffer);
@@ -924,7 +949,7 @@ void Gfx::vk_copy_buffer(VkBuffer dest, VkBuffer src, VkDeviceSize size) {
 void Gfx::vk_copy_buffer_to_image(VkImage dest, VkBuffer src, u32 width, u32 height) {
     VkCommandBuffer cmd_buffer = vk_one_shot_command_buffer_begin();
 
-    auto region = VkBufferImageCopy{
+    VkBufferImageCopy region = {
         .bufferOffset                    = 0,
         .bufferRowLength                 = 0,
         .bufferImageHeight               = 0,
@@ -940,10 +965,10 @@ void Gfx::vk_copy_buffer_to_image(VkImage dest, VkBuffer src, u32 width, u32 hei
     vk_one_shot_command_buffer_submit(cmd_buffer);
 }
 
-void Gfx::vk_transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout) {
+void Gfx::vk_transition_image_layout(VkImage image, VkFormat format, VkImageLayout old_layout, VkImageLayout new_layout, u32 mip_levels) {
     VkCommandBuffer cmd_buffer = vk_one_shot_command_buffer_begin();
 
-    auto barrier = VkImageMemoryBarrier{
+    VkImageMemoryBarrier barrier = {
         .sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
         .oldLayout                       = old_layout,
         .newLayout                       = new_layout,
@@ -952,7 +977,7 @@ void Gfx::vk_transition_image_layout(VkImage image, VkFormat format, VkImageLayo
         .image                           = image,
         .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
         .subresourceRange.baseMipLevel   = 0,
-        .subresourceRange.levelCount     = 1,
+        .subresourceRange.levelCount     = mip_levels,
         .subresourceRange.baseArrayLayer = 0,
         .subresourceRange.layerCount     = 1,
     };

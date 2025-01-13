@@ -14,12 +14,12 @@ class Arena {
         void          (*drop)(void* context, void* target);
     };
 
-    MemoryReservation reservation     = {};
-    ResourceNode*     resources_stack = {};
-    u8*               cur             = {};
+    MemoryReservation reservation;
+    ResourceNode*     resources_stack;
+    u8*               cur;
 
   public:
-    MemoryAllocator allocator = {};
+    MemoryAllocator allocator;
 
     static Arena create(MemoryAllocator allocator);
     void         destroy();
@@ -35,10 +35,10 @@ class Arena {
 };
 
 class ScratchArena : NoCopy {
-    ArenaMark mark = {};
+    ArenaMark mark;
 
   public:
-    Arena* arena = {};
+    Arena* arena;
 
     ScratchArena();
     ScratchArena(Slice<Arena*> conflicts);

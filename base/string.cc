@@ -75,10 +75,7 @@ void print_value(Vec<char>* out, Str value) {
 }
 
 Str Str::from_cstr(cchar* cstr) {
-    Str ret   = {};
-    ret.elems = cstr;
-    ret.count = strlen(cstr);
-    return ret;
+    return Str{cstr, strlen(cstr)};
 }
 
 Str Str::from_nullable_cstr(cchar* nullable_cstr) {

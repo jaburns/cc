@@ -8,12 +8,13 @@ global thread_local Arena g_arena_scratch[2];
 
 Arena Arena::create(MemoryAllocator allocator) {
     MemoryReservation reservation = allocator.memory_reserve();
+    Arena             ret         = {};
 
-    Arena ret           = {};
     ret.allocator       = allocator;
     ret.reservation     = reservation;
     ret.cur             = reservation.base;
     ret.resources_stack = nullptr;
+
     return ret;
 }
 
@@ -74,10 +75,7 @@ forall(T) Slice<T> Arena::alloc_many(usize count) {
     cur     += size;
     allocator.memory_commit_size(&reservation, cur - reservation.base);
 
-    Slice<T> slice = {};
-    slice.count    = count;
-    slice.elems    = (T*)memset(ret, 0, size);
-    return slice;
+    return Slice<T>{(T*)memset(ret, 0, size), count};
 }
 
 forall(T, U) T* Arena::alloc_resource(U* context, void (*drop)(U*, T*)) {

@@ -33,9 +33,9 @@ struct AudioPlayerMsg {
 };
 
 class AudioPlayer {
-    Channel<AudioPlayerMsg> msg_chan = {};
-    AudioClip*              clip     = {};
-    usize                   idx      = {};
+    Channel<AudioPlayerMsg> msg_chan;
+    AudioClip*              clip;
+    usize                   idx;
 
   public:
     static AudioPlayer alloc(Arena* arena);

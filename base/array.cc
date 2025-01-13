@@ -86,7 +86,7 @@ forall(T) T* This::pop() {
 }
 
 forall(T) void print_value(Vec<char>* out, This& vec) {
-    auto slice = vec.slice();
+    Slice<T> slice = vec.slice();
     print_value(out, slice);
 }
 
@@ -132,7 +132,7 @@ Template Slice<T> This::slice() {
 }
 
 Template void print_value(Vec<char>* out, This& array) {
-    auto slice = array.slice();
+    Slice<T> slice = array.slice();
     print_value(out, slice);
 }
 
@@ -162,7 +162,7 @@ Template T* This::pop() {
 }
 
 Template void print_value(Vec<char>* out, This& vec) {
-    auto slice = vec.slice();
+    Slice<T> slice = vec.slice();
     print_value(out, slice);
 }
 

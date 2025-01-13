@@ -9,15 +9,16 @@ forall(K, V) This This::construct(Arena* arena, u32 capacity, u32 max_elems) {
     V*   values     = arena->alloc_many<V>(capacity).elems;
     V*   value_stub = arena->alloc_one<V>();
 
-    This map       = {};
-    map->capacity  = capacity;
-    map->max_elems = max_elems;
+    This map = {};
 
-    map->count      = 0;
-    map->hashes     = hashes;
-    map->keys       = keys;
-    map->values     = values;
-    map->value_stub = value_stub;
+    map.capacity  = capacity;
+    map.max_elems = max_elems;
+
+    map.count      = 0;
+    map.hashes     = hashes;
+    map.keys       = keys;
+    map.values     = values;
+    map.value_stub = value_stub;
 
     return map;
 }

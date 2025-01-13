@@ -91,7 +91,7 @@ void* test_channel_drain_thread(void* arg) {
     bool          should_finish = false;
 
     for (;;) {
-        for (auto it : *chan) {
+        for (u64& it : *chan) {
             u64* item = (u64*)it.item;
             if (*item == 0) Panic("");
             sum += *item;

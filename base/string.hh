@@ -92,11 +92,13 @@ class StrSplitCharIter {
 
   public:
     static StrSplitCharIter start(Str target, char chr) {
-        auto ret        = StrSplitCharIter{};
+        StrSplitCharIter ret = {};
+
         ret.split       = chr;
         ret.target      = target;
         ret.item_end_   = target.elems - 1;
         ret.target_end_ = target.elems + target.count;
+
         ret.next();
         return ret;
     }
@@ -137,10 +139,12 @@ class StrSplitWhitespaceIter {
 
   public:
     static StrSplitWhitespaceIter start(Str target) {
-        auto ret        = StrSplitWhitespaceIter{};
+        StrSplitWhitespaceIter ret = {};
+
         ret.target      = target;
         ret.item_end_   = target.elems;
         ret.target_end_ = target.elems + target.count;
+
         ret.next();
         return ret;
     }

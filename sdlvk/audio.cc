@@ -90,12 +90,14 @@ void AudioPlayer::play_clip(AudioClip* clip) {
 
 AudioPlayer AudioPlayer::alloc(Arena* arena) {
     AudioPlayer ret = {};
-    ret.msg_chan    = Channel<AudioPlayerMsg>::alloc(arena, 256);
+
+    ret.msg_chan = Channel<AudioPlayerMsg>::alloc(arena, 256);
+
     return ret;
 }
 
 void AudioPlayer::stream_callback(u8* out_stream, i32 out_stream_byte_len) {
-    for (auto& msg : msg_chan) {
+    for (AudioPlayerMsg& msg : msg_chan) {
         switch (msg.tag) {
             case AudioPlayerMsg::Tag::Play: {
                 clip = msg.as_play.clip;

@@ -12,10 +12,10 @@ forall(T) class ChannelIter;
 forall(T) class Channel {
     friend class ChannelIter<T>;
 
-    usize          capacity           = {};
-    AtomicVal<u32> count_commit[2]    = {};
-    AtomicVal<u32> cur_buffer_reserve = {};
-    T*             buffer[2]          = {};
+    usize          capacity;
+    AtomicVal<u32> count_commit[2];
+    AtomicVal<u32> cur_buffer_reserve;
+    T*             buffer[2];
 
   public:
     static Channel alloc(Arena* arena, usize capacity);
@@ -26,10 +26,10 @@ forall(T) class Channel {
 };
 
 forall(T) class ChannelIter {
-    u32  count  = {};
-    u32  idx    = {};
-    T*   buffer = {};
-    bool done   = {};
+    u32  count;
+    u32  idx;
+    T*   buffer;
+    bool done;
 
   public:
     T&           operator*() { return buffer[idx]; }

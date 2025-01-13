@@ -50,7 +50,7 @@ PipelineSpec PipelineSpec::mk_default() {
 // -----------------------------------------------------------------------------
 
 PipelineInstance PipelineInstance::create(VKDropPool* drop_pool, VkDevice device, VkRenderPass render_pass, PipelineSpec spec) {
-    auto vert_create_info = VkShaderModuleCreateInfo{
+    VkShaderModuleCreateInfo vert_create_info = {
         .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = sizeof(u32) * spec.vert_spirv.count,
         .pCode    = spec.vert_spirv.elems,
@@ -59,7 +59,7 @@ PipelineInstance PipelineInstance::create(VKDropPool* drop_pool, VkDevice device
     VKExpect(vkCreateShaderModule(device, &vert_create_info, nullptr, &vert_module));
     defer { vkDestroyShaderModule(device, vert_module, nullptr); };
 
-    auto frag_create_info = VkShaderModuleCreateInfo{
+    VkShaderModuleCreateInfo frag_create_info = {
         .sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
         .codeSize = sizeof(u32) * spec.frag_spirv.count,
         .pCode    = spec.frag_spirv.elems,
@@ -68,13 +68,13 @@ PipelineInstance PipelineInstance::create(VKDropPool* drop_pool, VkDevice device
     VKExpect(vkCreateShaderModule(device, &frag_create_info, nullptr, &frag_module));
     defer { vkDestroyShaderModule(device, frag_module, nullptr); };
 
-    auto vert_shader_stage_info = VkPipelineShaderStageCreateInfo{
+    VkPipelineShaderStageCreateInfo vert_shader_stage_info = {
         .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage  = VK_SHADER_STAGE_VERTEX_BIT,
         .module = vert_module,
         .pName  = "main",
     };
-    auto frag_shader_stage_info = VkPipelineShaderStageCreateInfo{
+    VkPipelineShaderStageCreateInfo frag_shader_stage_info = {
         .sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         .stage  = VK_SHADER_STAGE_FRAGMENT_BIT,
         .module = frag_module,
@@ -85,7 +85,7 @@ PipelineInstance PipelineInstance::create(VKDropPool* drop_pool, VkDevice device
         frag_shader_stage_info,
     };
 
-    auto vertex_input_info = VkPipelineVertexInputStateCreateInfo{
+    VkPipelineVertexInputStateCreateInfo vertex_input_info = {
         .sType                           = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
         .vertexBindingDescriptionCount   = (u32)spec.vertex_bindings.count,
         .pVertexBindingDescriptions      = spec.vertex_bindings.elems,
@@ -97,12 +97,12 @@ PipelineInstance PipelineInstance::create(VKDropPool* drop_pool, VkDevice device
         VK_DYNAMIC_STATE_VIEWPORT,
         VK_DYNAMIC_STATE_SCISSOR
     };
-    auto dynamic_state = VkPipelineDynamicStateCreateInfo{
+    VkPipelineDynamicStateCreateInfo dynamic_state = {
         .sType             = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
         .dynamicStateCount = RawArrayLen(dynamic_states),
         .pDynamicStates    = dynamic_states,
     };
-    auto viewport_state = VkPipelineViewportStateCreateInfo{
+    VkPipelineViewportStateCreateInfo viewport_state = {
         .sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
         .viewportCount = 1,
         .scissorCount  = 1,
@@ -110,7 +110,7 @@ PipelineInstance PipelineInstance::create(VKDropPool* drop_pool, VkDevice device
 
     PipelineInstance ret;
 
-    auto pipeline_layout_info = VkPipelineLayoutCreateInfo{
+    VkPipelineLayoutCreateInfo pipeline_layout_info = {
         .sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
         .setLayoutCount         = (u32)spec.descriptor_set_layouts.count,
         .pSetLayouts            = spec.descriptor_set_layouts.elems,
@@ -127,7 +127,7 @@ PipelineInstance PipelineInstance::create(VKDropPool* drop_pool, VkDevice device
         spec.color_blend.pAttachments    = &spec.color_blend_single_attachment;
     }
 
-    auto pipeline_info = VkGraphicsPipelineCreateInfo{
+    VkGraphicsPipelineCreateInfo pipeline_info = {
         .sType               = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .stageCount          = 2,
         .pStages             = shader_stages,

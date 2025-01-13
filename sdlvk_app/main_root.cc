@@ -60,7 +60,7 @@ void root_main() {
     if (!handle) Panic("Error loading dylib: %s\n", dlerror());
     void            (*app_init)(App*, Gfx*, Arena)     = (void (*)(App*, Gfx*, Arena))dlsym(handle, "app_init");
     void            (*app_tick)(App*)                  = (void (*)(App*))dlsym(handle, "app_tick");
-    void            (*app_frame)(App*, f64, f32, f32)  = (void (*)(App*, f64, f32, f32))dlsym(handle, "app_frame");
+    bool            (*app_frame)(App*, f64, f32, f32)  = (bool (*)(App*, f64, f32, f32))dlsym(handle, "app_frame");
     AudioCallbackFn (*app_get_audio_callback_fn)(void) = (AudioCallbackFn(*)(void))dlsym(handle, "app_get_audio_callback_fn");
     void            (*app_freeze)(App*)                = (void (*)(App*))dlsym(handle, "app_freeze");
     void            (*app_thaw)(App*)                  = NULL;
@@ -103,7 +103,7 @@ void root_main() {
 
         f32 tick_lerp = (f32)((f64)tick_acc_nanos / (f64)APP_NANOS_PER_TICK);
 
-        app_frame(app, time, delta_time, tick_lerp);
+        if (!app_frame(app, time, delta_time, tick_lerp)) break;
 
 #if EDITOR
         if (!*rebuild_running) {
@@ -135,7 +135,7 @@ void root_main() {
             handle                    = dlopen("bin/libreload.dylib", RTLD_LAZY);
             app_init                  = NULL;
             app_tick                  = (void (*)(App*))dlsym(handle, "app_tick");
-            app_frame                 = (void (*)(App*, f64, f32, f32))dlsym(handle, "app_frame");
+            app_frame                 = (bool (*)(App*, f64, f32, f32))dlsym(handle, "app_frame");
             app_get_audio_callback_fn = (AudioCallbackFn(*)(void))dlsym(handle, "app_get_audio_callback_fn");
             app_freeze                = (void (*)(App*))dlsym(handle, "app_freeze");
             app_thaw                  = (void (*)(App*))dlsym(handle, "app_thaw");

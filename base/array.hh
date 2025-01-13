@@ -9,9 +9,9 @@ class Arena;
 
 forall(T) class ArrayIter {
   private:
-    T*    elems = {};
-    usize count = {};
-    usize idx   = {};
+    T*    elems;
+    usize count;
+    usize idx;
 
   public:
     T&         operator*() { return elems[idx]; }
@@ -69,12 +69,12 @@ forall(T) void print_value(Vec<char>* out, Vec<T>& vec);
 // -----------------------------------------------------------------------------
 
 forall(T) class GrowableVec : NoCopy {
-    MemoryAllocator   allocator   = {};
-    MemoryReservation reservation = {};
+    MemoryAllocator   allocator;
+    MemoryReservation reservation;
 
   public:
-    T*    elems = {};
-    usize count = {};
+    T*    elems;
+    usize count;
 
     GrowableVec(MemoryAllocator allocator);
     ~GrowableVec();
