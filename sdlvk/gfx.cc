@@ -77,10 +77,34 @@ void Gfx::create_swap_chain() {
         swap_chain_drop_pool.push(vkDestroyImageView, swap_chain_image_views[i]);
     }
 
+    // color
+
+    vk_create_image(
+        extent.width, extent.height, 1, msaa_samples,
+        surface_format.format,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        &swap_chain_drop_pool, &color_image, &color_image_memory
+    );
+    VkImageViewCreateInfo color_view_info = {
+        .sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image                           = color_image,
+        .viewType                        = VK_IMAGE_VIEW_TYPE_2D,
+        .format                          = surface_format.format,
+        .subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
+        .subresourceRange.baseMipLevel   = 0,
+        .subresourceRange.levelCount     = 1,
+        .subresourceRange.baseArrayLayer = 0,
+        .subresourceRange.layerCount     = 1,
+    };
+    VKExpect(vkCreateImageView(device, &color_view_info, nullptr, &color_image_view));
+    swap_chain_drop_pool.push(vkDestroyImageView, color_image_view);
+
     // depth
 
     vk_create_image(
-        extent.width, extent.height, 1, VK_SAMPLE_COUNT_1_BIT,
+        extent.width, extent.height, 1, msaa_samples,
         depth_format,
         VK_IMAGE_TILING_OPTIMAL,
         VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
@@ -106,8 +130,9 @@ void Gfx::create_swap_chain() {
     main_pass_framebuffers.count = swap_chain_image_views.count;
     for (u32 i = 0; i < main_pass_framebuffers.count; ++i) {
         VkImageView attachments[] = {
-            swap_chain_image_views.elems[i],
+            color_image_view,
             depth_image_view,
+            swap_chain_image_views.elems[i],
         };
         VkFramebufferCreateInfo framebuffer_info = {
             .sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -387,7 +412,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         }
     }
 
-    // msaa_samples = vk_get_max_usable_sample_count(physical_device);
+    msaa_samples = vk_get_max_usable_sample_count(physical_device);
 
     VkFormat formats[] = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
     depth_format       = vk_find_supported_format(physical_device, SliceFromRawArray(VkFormat, formats), VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
@@ -396,13 +421,13 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
     {
         VkAttachmentDescription color_attachment = {
             .format         = surface_format.format,
-            .samples        = VK_SAMPLE_COUNT_1_BIT,
+            .samples        = msaa_samples,
             .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
             .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
             .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
-            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            .finalLayout    = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         };
         VkAttachmentReference color_attachment_ref = {
             .attachment = 0,
@@ -410,7 +435,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         };
         VkAttachmentDescription depth_attachment = {
             .format         = depth_format,
-            .samples        = VK_SAMPLE_COUNT_1_BIT,
+            .samples        = msaa_samples,
             .loadOp         = VK_ATTACHMENT_LOAD_OP_CLEAR,
             .storeOp        = VK_ATTACHMENT_STORE_OP_DONT_CARE,
             .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -422,12 +447,27 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .attachment = 1,
             .layout     = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         };
+        VkAttachmentDescription color_attachment_resolve{
+            .format         = surface_format.format,
+            .samples        = VK_SAMPLE_COUNT_1_BIT,
+            .loadOp         = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .storeOp        = VK_ATTACHMENT_STORE_OP_STORE,
+            .stencilLoadOp  = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            .initialLayout  = VK_IMAGE_LAYOUT_UNDEFINED,
+            .finalLayout    = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        };
+        VkAttachmentReference color_attachment_resolve_ref{
+            .attachment = 2,
+            .layout     = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        };
 
         VkSubpassDescription subpass = {
             .pipelineBindPoint       = VK_PIPELINE_BIND_POINT_GRAPHICS,
             .colorAttachmentCount    = 1,
             .pColorAttachments       = &color_attachment_ref,
             .pDepthStencilAttachment = &depth_attachment_ref,
+            .pResolveAttachments     = &color_attachment_resolve_ref,
         };
         VkSubpassDependency dependency = {
             .srcSubpass    = VK_SUBPASS_EXTERNAL,
@@ -441,6 +481,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
         VkAttachmentDescription attachments[] = {
             color_attachment,
             depth_attachment,
+            color_attachment_resolve,
         };
         VkRenderPassCreateInfo render_pass_info = {
             .sType           = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,

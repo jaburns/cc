@@ -60,9 +60,9 @@ class Gfx {
     VkRenderPass                                    imgui_render_pass;
     InlineVec<VkFramebuffer, MAX_SWAP_CHAIN_IMAGES> imgui_framebuffers;
 #endif
-    // VkImage        color_image;
-    // VkImageView    color_image_view;
-    // VkDeviceMemory color_image_memory;
+    VkImage        color_image;
+    VkImageView    color_image_view;
+    VkDeviceMemory color_image_memory;
 
     VkImage        depth_image;
     VkImageView    depth_image_view;
@@ -79,7 +79,7 @@ class Gfx {
   public:
     u32 cur_framebuffer_idx;
 
-    // VkSampleCountFlagBits msaa_samples;
+    VkSampleCountFlagBits msaa_samples;
 
     VkInstance       instance;
     VkPhysicalDevice physical_device;
