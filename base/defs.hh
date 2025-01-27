@@ -24,6 +24,24 @@
 #define no_return     [[noreturn]]
 #define no_inline     __attribute__((noinline))
 
+#define X_forall_dispatch(_1, _2, _3, _4, name, ...) \
+    name
+#define X_forall_1(t1)             template <typename t1>
+#define X_forall_2(t1, t2)         template <typename t1, typename t2>
+#define X_forall_3(t1, t2, t3)     template <typename t1, typename t2, typename t3>
+#define X_forall_4(t1, t2, t3, t4) template <typename t1, typename t2, typename t3, typename t4>
+#define forall(...)                X_forall_dispatch(__VA_ARGS__, X_forall_4, X_forall_3, X_forall_2, X_forall_1)(__VA_ARGS__)
+
+#if defined(__has_attribute)
+#if __has_attribute(no_sanitize)
+#define no_sanitize_overflow __attribute__((no_sanitize("unsigned-integer-overflow", "signed-integer-overflow")))
+#else
+#define no_sanitize_overflow
+#endif
+#else
+#define no_sanitize_overflow
+#endif
+
 typedef uint8_t   u8;
 typedef int8_t    i8;
 typedef uint16_t  u16;
@@ -82,27 +100,7 @@ u64 operator""_gb(u64 n) { return n << 30; }
 #define ZeroArray(array, count)           memset((array), 0, (count) * sizeof((array)[0]))
 #define CopyArray(dest_ptr, array, count) memcpy((dest_ptr), (array), (count) * sizeof((array)[0]))
 
-#define X_forall_dispatch(_1, _2, _3, _4, name, ...) \
-    name
-#define X_forall_1(t1)             template <typename t1>
-#define X_forall_2(t1, t2)         template <typename t1, typename t2>
-#define X_forall_3(t1, t2, t3)     template <typename t1, typename t2, typename t3>
-#define X_forall_4(t1, t2, t3, t4) template <typename t1, typename t2, typename t3, typename t4>
-#define forall(...)                X_forall_dispatch(__VA_ARGS__, X_forall_4, X_forall_3, X_forall_2, X_forall_1)(__VA_ARGS__)
-
-#if defined(__has_attribute)
-#if __has_attribute(no_sanitize)
-#define no_sanitize_overflow __attribute__((no_sanitize("unsigned-integer-overflow", "signed-integer-overflow")))
-#else
-#define no_sanitize_overflow
-#endif
-#else
-#define no_sanitize_overflow
-#endif
-
-no_sanitize_overflow u32 wrapped_add(u32 a, u32 b) {
-    return a + b;
-}
+no_sanitize_overflow u32 wrapped_add(u32 a, u32 b) { return a + b; }
 no_sanitize_overflow u32 wrapped_mul(u32 a, u32 b) { return a * b; }
 no_sanitize_overflow u64 wrapped_add(u64 a, u64 b) { return a + b; }
 no_sanitize_overflow u64 wrapped_mul(u64 a, u64 b) { return a * b; }

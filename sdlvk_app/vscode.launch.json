@@ -8,6 +8,8 @@
             "program": "${workspaceFolder}/bin/sdlvk_app",
             "cwd": "${workspaceFolder}",
             "preLaunchTask": "buildTask",
+            "console": "internalConsole",
+            "internalConsoleOptions": "openOnSessionStart",
             "envFile": "${workspaceFolder}/.vscode/.env"
         }
     ]

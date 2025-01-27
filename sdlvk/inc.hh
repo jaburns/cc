@@ -18,6 +18,7 @@
 #include "gfx.hh"
 #include "pipeline.hh"
 #include "texture.hh"
+#include "descriptors.hh"
 
 #if EDITOR
 #define app_dll_export extern "C"

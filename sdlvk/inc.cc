@@ -6,3 +6,4 @@
 #include "gfx.cc"
 #include "pipeline.cc"
 #include "texture.cc"
+#include "descriptors.cc"

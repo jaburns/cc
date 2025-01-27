@@ -468,7 +468,7 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
             .commandBufferCount = 2,
         };
-        VKExpect(vkAllocateCommandBuffers(device, &alloc_info, command_buffers.elems));
+        VKExpect(vkAllocateCommandBuffers(device, &alloc_info, command_buffer.elems));
 
         VkSemaphoreCreateInfo semaphore_info = {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -477,10 +477,10 @@ void Gfx::init(Arena* arena, cchar* window_title, SDL_AudioCallback sdl_audio_ca
             .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
             .flags = VK_FENCE_CREATE_SIGNALED_BIT,
         };
-        for (u32 i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-            VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &image_available_semaphores[i]));
-            VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &render_finished_semaphores[i]));
-            VKExpect(vkCreateFence(device, &fence_info, nullptr, &in_flight_fences[i]));
+        for (u32 i = 0; i < GFX_MAX_FRAMES_IN_FLIGHT; ++i) {
+            VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &image_available_semaphore[i]));
+            VKExpect(vkCreateSemaphore(device, &semaphore_info, nullptr, &render_finished_semaphore[i]));
+            VKExpect(vkCreateFence(device, &fence_info, nullptr, &in_flight_fence[i]));
         }
     }
 #if EDITOR
@@ -684,9 +684,9 @@ void Gfx::wait_device_idle() {
 
 VkCommandBuffer Gfx::main_render_pass_begin(vec4 color_clear, f32 depth_clear, u32 stencil_clear) {
 top:
-    vkWaitForFences(device, 1, &in_flight_fences[cur_framebuffer_idx], VK_TRUE, UINT64_MAX);
+    vkWaitForFences(device, 1, &in_flight_fence[cur_framebuffer_idx], VK_TRUE, UINT64_MAX);
 
-    VkResult result = vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, image_available_semaphores[cur_framebuffer_idx], nullptr, &cur_image_idx);
+    VkResult result = vkAcquireNextImageKHR(device, swap_chain, UINT64_MAX, image_available_semaphore[cur_framebuffer_idx], nullptr, &cur_image_idx);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebuffer_resized) {
         log("vkAcquireNextImageKHR result: ", result);
@@ -699,7 +699,7 @@ top:
             VkSubmitInfo dummy_submit_info = {
                 .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
                 .waitSemaphoreCount   = 1,
-                .pWaitSemaphores      = &image_available_semaphores[cur_framebuffer_idx],
+                .pWaitSemaphores      = &image_available_semaphore[cur_framebuffer_idx],
                 .pWaitDstStageMask    = waitStages,
                 .commandBufferCount   = 0,
                 .pCommandBuffers      = nullptr,
@@ -716,9 +716,9 @@ top:
         Panic("Failed to acquire swap chain image");
     }
 
-    vkResetFences(device, 1, &in_flight_fences[cur_framebuffer_idx]);
+    vkResetFences(device, 1, &in_flight_fence[cur_framebuffer_idx]);
 
-    auto& buffer = command_buffers[cur_framebuffer_idx];
+    auto& buffer = command_buffer[cur_framebuffer_idx];
     vkResetCommandBuffer(buffer, 0);
 
     VkCommandBufferBeginInfo begin_info = {
@@ -750,7 +750,7 @@ top:
 }
 
 void Gfx::main_render_pass_end() {
-    VkCommandBuffer& buffer = command_buffers[cur_framebuffer_idx];
+    VkCommandBuffer& buffer = command_buffer[cur_framebuffer_idx];
     vkCmdEndRenderPass(buffer);
 
 #if EDITOR
@@ -778,19 +778,19 @@ void Gfx::main_render_pass_end() {
     VkSubmitInfo submit_info = {
         .sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .waitSemaphoreCount   = 1,
-        .pWaitSemaphores      = &image_available_semaphores[cur_framebuffer_idx],
+        .pWaitSemaphores      = &image_available_semaphore[cur_framebuffer_idx],
         .pWaitDstStageMask    = wait_stages,
         .commandBufferCount   = 1,
-        .pCommandBuffers      = &command_buffers[cur_framebuffer_idx],
+        .pCommandBuffers      = &command_buffer[cur_framebuffer_idx],
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores    = &render_finished_semaphores[cur_framebuffer_idx],
+        .pSignalSemaphores    = &render_finished_semaphore[cur_framebuffer_idx],
     };
-    VKExpect(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fences[cur_framebuffer_idx]));
+    VKExpect(vkQueueSubmit(graphics_queue, 1, &submit_info, in_flight_fence[cur_framebuffer_idx]));
 
     VkPresentInfoKHR present_info = {
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores    = &render_finished_semaphores[cur_framebuffer_idx],
+        .pWaitSemaphores    = &render_finished_semaphore[cur_framebuffer_idx],
         .swapchainCount     = 1,
         .pSwapchains        = &swap_chain,
         .pImageIndices      = &cur_image_idx,
@@ -805,7 +805,40 @@ void Gfx::main_render_pass_end() {
         Panic("Failed to present swap chain image");
     }
 
-    cur_framebuffer_idx = (cur_framebuffer_idx + 1) % MAX_FRAMES_IN_FLIGHT;
+    cur_framebuffer_idx = (cur_framebuffer_idx + 1) % GFX_MAX_FRAMES_IN_FLIGHT;
+}
+
+// -----------------------------------------------------------------------------
+
+forall(T) VkBuffer Gfx::vk_create_device_local_buffer(VKDropPool* drop_pool, Slice<T> data, VkBufferUsageFlags usage_flags) {
+    ScratchArena scratch{};
+    VKDropPool   vk_scratch = VKDropPool::alloc(scratch.arena, 4);
+    defer { vk_scratch.drop_all(device); };
+
+    VkDeviceSize   size = sizeof(T) * data.count;
+    VkBuffer       staging_buffer;
+    VkDeviceMemory staging_buffer_memory;
+
+    vk_create_buffer(
+        size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        &vk_scratch, &staging_buffer, &staging_buffer_memory
+    );
+
+    void* mapped;
+    vkMapMemory(device, staging_buffer_memory, 0, size, 0, &mapped);
+    data.copy_into(mapped);
+    vkUnmapMemory(device, staging_buffer_memory);
+
+    VkDeviceMemory buffer_memory;
+    VkBuffer       buffer;
+
+    vk_create_buffer(
+        size, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage_flags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        drop_pool, &buffer, &buffer_memory
+    );
+    vk_copy_buffer(buffer, staging_buffer, size);
+
+    return buffer;
 }
 
 // -----------------------------------------------------------------------------

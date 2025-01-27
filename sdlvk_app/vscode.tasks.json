@@ -5,7 +5,18 @@
             "label": "buildTask",
             "type": "shell",
             "command": "./jaburns_cc/sdlvk_app/build.sh",
-            "group": { "kind": "build", "isDefault": true },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": false,
+                "clear": true
+            },
             "problemMatcher": ["$gcc"]
         }
     ]
