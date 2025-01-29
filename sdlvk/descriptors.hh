@@ -14,6 +14,7 @@ class DescriptorSetBuilder {
 
     struct Ubo {
         usize                   size;
+        VkShaderStageFlags      stage_flags;
         PerSwap<VkBuffer>       buffer;
         PerSwap<VkDeviceMemory> memory;
     };
@@ -27,7 +28,7 @@ class DescriptorSetBuilder {
                                                             ubos({}),
                                                             textures({}) {}
 
-    forall(T) PerSwap<T*> add_uniform_buffer_object();
+    forall(T) PerSwap<T*> add_uniform_buffer_object(VkShaderStageFlags stage_flags);
     void add_combined_image_sampler(Texture* texture);
 
     DescriptorSet build();
