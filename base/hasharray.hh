@@ -1,63 +1,59 @@
 #pragma once
 #include "inc.hh"
-namespace {
+namespace a {
+// -----------------------------------------------------------------------------
+#define Template template <typename K, typename V, bool PREHASHED>
 
-forall(K, V) class HashArrayIter;
+Template class HashArray_ {
+    konst u32 LOAD_FACTOR_PERCENT = 70;
 
-forall(K, V) class HashArray {
-    static constexpr u32 LOAD_FACTOR_PERCENT = 70;
-
-    friend class HashArrayIter<K, V>;
-
-    u32* hashes;
-    K*   keys;
-    V*   values;
-    V*   value_stub;
+    u64* hashes;
+    K* keys;
+    V* values;
+    V* value_stub;
 
   public:
-    u32 capacity;
-    u32 max_elems;
-    u32 count;
+    u64 capacity;
+    u64 max_elems;
+    u64 count;
 
-    static HashArray alloc_with_cap(Arena* arena, u32 capacity);
-    static HashArray alloc_with_elems(Arena* arena, u32 max_elems);
+    class Iter {
+        u64 idx;
+        HashArray_* target;
 
-    V*   insert(K* key);
-    V*   maybe_get(K* key);
-    V*   get(K* key);
-    V*   entry(K* key);
+      public:
+        K* key;
+        V* item;
+        bool done;
+
+        func Iter make(HashArray_* map);
+        void next();
+    };
+
+    func HashArray_ make_with_cap(Arena* arena, u64 capacity);
+    func HashArray_ make_with_elems(Arena* arena, u64 max_elems);
+
+    V* insert(K* key);
+    V* maybe_get(K* key);
+    V* get(K* key);
+    V* entry(K* key);
     bool remove(K* key);
     void clear();
 
-    HashArrayIter<K, V> begin() { return HashArrayIter<K, V>::start(this); }
-    HashArrayIter<K, V> end() { return HashArrayIter<K, V>{}; }
+    Iter iter() { return Iter::make(this); }
 
   private:
-    static HashArray construct(Arena* arena, u32 capacity, u32 max_elems);
+    func HashArray_ make(Arena* arena, u64 capacity, u64 max_elems);
 
-    u32 find_idx(K* key);
+    u64 find_idx(K* key);
 };
 
-forall(K, V) class HashArrayIter {
-  public:
-    struct Entry {
-        K* key;
-        V* value;
-    };
+template <typename K, typename V>
+using HashArray = HashArray_<K, V, false>;
 
-  private:
-    u32              idx;
-    HashArray<K, V>* target;
-    Entry            entry;
-    bool             done;
+template <typename K, typename V>
+using PreHashArray = HashArray_<K, V, true>;
 
-  public:
-    Entry          operator*() { return entry; }
-    bool           operator!=(HashArrayIter& other) { return !done; }
-    HashArrayIter& operator++() { return next(), *this; }
-
-    static HashArrayIter start(HashArray<K, V>* map);
-    void                 next();
-};
-
-}  // namespace
+#undef Template
+// -----------------------------------------------------------------------------
+}  // namespace a

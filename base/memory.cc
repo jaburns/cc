@@ -1,69 +1,96 @@
 #include "inc.hh"
-namespace {
+namespace a {
+// -----------------------------------------------------------------------------
 
 global usize g_memory_page_size = {0};
+global thread_local MemoryAllocator g_memory_allocator;
 
-MemoryReservation memory_reserve() {
-    void* ptr = mmap(NULL, MEMORY_RESERVE_SIZE, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (ptr == MAP_FAILED) Panic("memory_reserve mmap failed");
+// -----------------------------------------------------------------------------
+
+MemoryReservation memory_reservation_acquire(usize reserve_size) {
+    if (reserve_size == 0) {
+        reserve_size = MEMORY_RESERVE_DEFAULT_SIZE;
+    } else {
+        usize pages = (reserve_size % g_memory_page_size == 0 ? 0 : 1) + reserve_size / g_memory_page_size;
+        reserve_size = g_memory_page_size * pages;
+    }
+
+    void* ptr = mmap(NULL, reserve_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    AssertM(ptr != MAP_FAILED, "memory_reservation_acquire mmap failed");
 
     return {
-        .base             = (u8*)ptr,
-        .block_size       = g_memory_page_size,
-        .blocks_committed = 0,
+        .base = (u8*)ptr,
+        .pages_committed = 0,
+        .reserved_size = reserve_size,
     };
 }
 
-void memory_commit_size(MemoryReservation* reservation, usize total_size) {
-    usize total_blocks_required = 1 + total_size / reservation->block_size;
+void memory_reservation_commit(MemoryReservation* reservation, usize total_commit_size) {
+    usize total_pages_required = 1 + total_commit_size / g_memory_page_size;
 
-    if (total_blocks_required > reservation->blocks_committed) {
-        usize cur_size                = reservation->block_size * reservation->blocks_committed;
-        usize add_size                = total_blocks_required - reservation->blocks_committed;
-        reservation->blocks_committed = total_blocks_required;
+    if (total_pages_required > reservation->pages_committed) {
+        AssertM(total_pages_required * g_memory_page_size <= reservation->reserved_size, "memory_reservation_commit would overrun the end of the reserved address space");
 
-        i32 result = mprotect(
-            reservation->base + cur_size, add_size * reservation->block_size, PROT_READ | PROT_WRITE
+        usize cur_size = g_memory_page_size * reservation->pages_committed;
+        usize add_pages = total_pages_required - reservation->pages_committed;
+        reservation->pages_committed = total_pages_required;
+
+        int result = mprotect(
+            reservation->base + cur_size, add_pages * g_memory_page_size, PROT_READ | PROT_WRITE
         );
-        if (result == -1) Panic("memory_commit_size mprotect failed");
+        AssertM(result != -1, "memory_reservation_commit mprotect failed");
 
-    } else if (total_blocks_required < reservation->blocks_committed) {
-        usize remove_size             = reservation->blocks_committed - total_blocks_required;
-        reservation->blocks_committed = total_blocks_required;
-        usize new_size                = reservation->block_size * reservation->blocks_committed;
+    } else if (total_pages_required < reservation->pages_committed) {
+        usize remove_size = reservation->pages_committed - total_pages_required;
+        reservation->pages_committed = total_pages_required;
+        usize new_size = g_memory_page_size * reservation->pages_committed;
 
-        i32 result = madvise(
-            reservation->base + new_size, remove_size * reservation->block_size, MADV_DONTNEED
+        int result = madvise(
+            reservation->base + new_size, remove_size * g_memory_page_size, MADV_DONTNEED
         );
-        if (result == -1) Panic("memory_commit_size madvise failed");
+        AssertM(result != -1, "memory_reservation_commit madvise failed");
     }
 }
 
-void memory_release(MemoryReservation* reservation) {
-    i32 result = munmap(reservation->base, MEMORY_RESERVE_SIZE);
-    if (result == -1) Panic("memory_decommit munmap failed");
-    ZeroStruct(reservation);
+void memory_reservation_trim(MemoryReservation* reservation) {
+    usize keep_size = reservation->pages_committed * g_memory_page_size;
+    if (keep_size == 0 || keep_size == reservation->reserved_size) return;
+
+    usize trim_size = reservation->reserved_size - keep_size;
+    u8* trim_addr = reservation->base + keep_size;
+    int result = munmap(trim_addr, trim_size);
+    AssertM(result != -1, "memory_reservation_trim munmap failed");
+
+    reservation->reserved_size = keep_size;
 }
 
-void* memory_heap_alloc(usize size) {
-    return calloc(1, size);
+void memory_reservation_release(MemoryReservation* reservation) {
+    int result = munmap(reservation->base, reservation->reserved_size);
+    AssertM(result != -1, "memory_reservation_release munmap failed");
+    StructZero(reservation);
 }
 
-void memory_heap_free(void* ptr) {
-    free(ptr);
-}
+// -----------------------------------------------------------------------------
 
-MemoryAllocator memory_get_global_allocator() {
+MemoryAllocator memory_allocator_create() {
     if (!g_memory_page_size) {
         g_memory_page_size = sysconf(_SC_PAGESIZE);
     }
     return {
-        .memory_reserve     = memory_reserve,
-        .memory_commit_size = memory_commit_size,
-        .memory_release     = memory_release,
-        .memory_heap_alloc  = memory_heap_alloc,
-        .memory_heap_free   = memory_heap_free,
+        .memory_reservation_acquire = memory_reservation_acquire,
+        .memory_reservation_commit = memory_reservation_commit,
+        .memory_reservation_trim = memory_reservation_trim,
+        .memory_reservation_release = memory_reservation_release,
     };
 }
 
+void memory_set_global_allocator(MemoryAllocator allocator) {
+    g_memory_allocator = allocator;
 }
+
+MemoryAllocator memory_get_global_allocator() {
+    return g_memory_allocator;
+}
+
+// -----------------------------------------------------------------------------
+}  // namespace a

@@ -1,7 +1,8 @@
 #include "inc.hh"
-namespace {
+namespace a {
+// -----------------------------------------------------------------------------
 
-#ifdef __APPLE__
+#if PLATFORM_APPLE
 
 global mach_timebase_info_data_t g_timing_timebase;
 
@@ -45,4 +46,5 @@ u64 timing_ticks_to_nanos(u64 ticks) {
 
 #endif
 
+// -----------------------------------------------------------------------------
 }  // namespace

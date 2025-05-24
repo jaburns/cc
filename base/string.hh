@@ -1,40 +1,38 @@
 #pragma once
 #include "inc.hh"
-namespace {
+namespace a {
 // -----------------------------------------------------------------------------
 
-void print_value(Vec<char>* out, cchar* value);
-void print_value(Vec<char>* out, char* value);
-void print_value(Vec<char>* out, char value);
-void print_value(Vec<char>* out, i8 value);
-void print_value(Vec<char>* out, u8 value);
-void print_value(Vec<char>* out, i16 value);
-void print_value(Vec<char>* out, u16 value);
-void print_value(Vec<char>* out, i32 value);
-void print_value(Vec<char>* out, u32 value);
-void print_value(Vec<char>* out, i64 value);
-void print_value(Vec<char>* out, u64 value);
-void print_value(Vec<char>* out, usize value);
-void print_value(Vec<char>* out, f32 value);
-void print_value(Vec<char>* out, f64 value);
-void print_value(Vec<char>* out, bool value);
+void print_value(Arena* out, cchar* value);
+void print_value(Arena* out, char* value);
+void print_value(Arena* out, char value);
+void print_value(Arena* out, i8 value);
+void print_value(Arena* out, u8 value);
+void print_value(Arena* out, i16 value);
+void print_value(Arena* out, u16 value);
+void print_value(Arena* out, i32 value);
+void print_value(Arena* out, u32 value);
+void print_value(Arena* out, i64 value);
+void print_value(Arena* out, u64 value);
+void print_value(Arena* out, usize value);
+void print_value(Arena* out, isize value);
+void print_value(Arena* out, float value);
+void print_value(Arena* out, double value);
+void print_value(Arena* out, bool value);
 
 void print();
 forall(T, ... Args) void print(T value, Args... args);
 forall(... Args) void println(Args... args);
 
-void str_print(Vec<char>* out);
-forall(T, ... Args) void str_print(Vec<char>* out, T value, Args... args);
-forall(... Args) void str_println(Vec<char>* out, Args... args);
-
 #if DEBUG
 void x_log_print();
 forall(T, ... Args) void x_log_print(T value, Args... args);
-#define log(...)                                   \
-    do {                                           \
-        printf(">> %s:%i : ", __FILE__, __LINE__); \
-        x_log_print(__VA_ARGS__);                  \
-        printf("\n");                              \
+#define log(...)                                                      \
+    do {                                                              \
+        u64 ms = timing_ticks_to_nanos(timing_get_ticks()) / 1000000; \
+        printf(">> [%llu] %s:%i : ", ms, __FILE__, __LINE__);         \
+        x_log_print(__VA_ARGS__);                                     \
+        printf("\n");                                                 \
     } while (0)
 #else
 #define log(...)
@@ -42,137 +40,147 @@ forall(T, ... Args) void x_log_print(T value, Args... args);
 
 // -----------------------------------------------------------------------------
 
+class StrSplitCharIter;
+class StrSplitWhitespaceIter;
+class StrChunksIter;
+
 struct Str {
     cchar* elems;
-    usize  count;
+    usize count;
+    // ---
 
-    static Str from_cstr(cchar* cstr);
-    static Str from_nullable_cstr(cchar* nullable_cstr);
-    char*      to_cstr(Arena* arena);
-    bool       eq_cstr(cchar* cstr);
-    bool       eq(Str other);
+    template <usize N>
+    constexpr Str(cchar (&arr)[N]) : elems(arr), count(N - 1) {}
+    constexpr Str(cchar* p, usize n) : elems(p), count(n) {}
+    constexpr Str() = default;
 
-    Str clone(Arena* arena);
+    konst usize DEFAULT_MAX_CSTR_LEN = 4096;
+
+    func Str from_cstr(cchar* cstr, usize maxlen = DEFAULT_MAX_CSTR_LEN);
+    func Str from_nullable_cstr(cchar* nullable_cstr, usize maxlen = DEFAULT_MAX_CSTR_LEN);
+    func Str from_slice_char(Slice<char> slice);
+    Slice<char> to_slice();
+    char* to_cstr(Arena* arena);
+    bool eq(Str other);
 
     Str before_first_index(char split);
     Str after_first_index(char split);
     Str after_last_index(char split);
     Str trim();
 
-    bool starts_with_cstr(cchar* cstr);
-    Str  substr_to(usize idx);
-    Str  substr_from(usize idx);
-    Str  substr(usize idx, usize len);
+    bool starts_with(Str str);
+    bool ends_with(Str str);
+    Str substr_to(usize idx);
+    Str substr_from(usize idx);
+    Str substr_from_ptr(cchar* ptr);
+    Str substr(usize idx, usize len);
 
-    u64 parse_u64(i32 base);
-    i64 parse_i64(i32 base);
-    u32 parse_u32(i32 base);
-    i32 parse_i32(i32 base);
-    f32 parse_f32();
-    f64 parse_f64();
+    u64 parse_u64(int base);
+    i64 parse_i64(int base);
+    u32 parse_u32(int base);
+    int parse_int(int base);
+    float parse_float();
+    double parse_double();
+
+    Str clone(Arena* arena);
+    func Str join(Arena* out, Slice<Str> strings, char join);
+    Str replace(Arena* out, Str match, Str newval);
+
+    StrSplitCharIter split_char_iter(char chr);
+    StrSplitWhitespaceIter split_whitespace_iter();
+
+    // gives chunks as long as they fit, does not return the remainder
+    StrChunksIter chunks_iter(usize size);
 };
-void print_value(Vec<char>* out, Str value);
 
-#define StrLit(cstr_lit) Str{cstr_lit, sizeof(cstr_lit) - 1}
+void print_value(Arena* out, Str value);
 
 // -----------------------------------------------------------------------------
 
-bool cstr_eq(cchar* a, cchar* b);
+void arena_print(Arena* out);
+forall(T, ... Args) Str arena_print(Arena* out, T value, Args... args);
+forall(... Args) Str arena_println(Arena* out, Args... args);
+
+// -----------------------------------------------------------------------------
+
+struct Str32 {
+    char elems[31];
+    u8 zero;
+
+  public:
+    cchar* to_cstr() { return elems; }
+
+    void set(Str str) {
+        Assert(str.count <= 31);
+        StructZero(this);
+        ArrayCopy(elems, str.elems, str.count);
+    }
+};
+
+void print_value(Arena* out, Str32 value);
+
+// -----------------------------------------------------------------------------
+
+struct StrBuilder {
+    u8* arena_start;
+    Arena* arena;
+
+    func StrBuilder make(Arena* arena) {
+        StrBuilder ret = {};
+        ret.arena = arena;
+        ret.arena_start = arena->cur;
+        return ret;
+    }
+
+    forall(... Args) void print(Args... args) { arena_print(arena, args...); }
+    forall(... Args) void println(Args... args) { arena_println(arena, args...); }
+    Str to_str() { return Str{(char*)arena_start, (usize)(arena->cur - arena_start)}; }
+};
 
 // -----------------------------------------------------------------------------
 
 class StrSplitCharIter {
   private:
-    bool   done;
-    char   split;
-    Str    target;
-    Str    item;
-    cchar* target_end_;
-    cchar* item_end_;
+    char split;
+    Str target;
+    cchar* target_end;
+    cchar* item_end;
 
   public:
-    static StrSplitCharIter start(Str target, char chr) {
-        StrSplitCharIter ret = {};
-
-        ret.split       = chr;
-        ret.target      = target;
-        ret.item_end_   = target.elems - 1;
-        ret.target_end_ = target.elems + target.count;
-
-        ret.next();
-        return ret;
-    }
-    void next() {
-        item_end_++;
-        item.elems = item_end_;
-        if (item.elems >= target_end_) {
-            done = true;
-            return;
-        }
-        while (item_end_ < target_end_ && *item_end_ != split) {
-            item_end_++;
-        }
-        item.count = item_end_ - item.elems;
-    }
-    Str               operator*() { return item; }
-    bool              operator!=(StrSplitCharIter& other) { return !done; }
-    StrSplitCharIter& operator++() { return next(), *this; }
+    bool done;
+    Str item;
+    func StrSplitCharIter make(Str target, char chr);
+    void next();
 };
 
-struct StrSplitChar : NoCopy {
-    Str  target;
-    char chr;
-    StrSplitChar(Str target, char chr) : target(target), chr(chr) {}
-    StrSplitCharIter begin() { return StrSplitCharIter::start(target, chr); }
-    StrSplitCharIter end() { return StrSplitCharIter{}; }
+class StrSplitWhitespaceIter {
+  private:
+    Str target;
+    cchar* target_end;
+    cchar* item_end;
+
+  public:
+    bool done;
+    Str item;
+    func StrSplitWhitespaceIter make(Str target);
+    void next();
+};
+
+class StrChunksIter {
+  private:
+    cchar* target_end;
+    usize chunk_size;
+
+  public:
+    bool done;
+    Str item;
+    func StrChunksIter make(Str target, usize size);
+    void next();
 };
 
 // -----------------------------------------------------------------------------
 
-class StrSplitWhitespaceIter {
-  private:
-    bool   done;
-    Str    target;
-    Str    item;
-    cchar* target_end_;
-    cchar* item_end_;
-
-  public:
-    static StrSplitWhitespaceIter start(Str target) {
-        StrSplitWhitespaceIter ret = {};
-
-        ret.target      = target;
-        ret.item_end_   = target.elems;
-        ret.target_end_ = target.elems + target.count;
-
-        ret.next();
-        return ret;
-    }
-    void next() {
-        while (item_end_ < target_end_ && isspace(*item_end_)) {
-            item_end_++;
-        }
-        item.elems = item_end_;
-        if (item.elems >= target_end_) {
-            done = true;
-            return;
-        }
-        while (item_end_ < target_end_ && !isspace(*item_end_)) {
-            item_end_++;
-        }
-        item.count = item_end_ - item.elems;
-    }
-    Str                     operator*() { return item; }
-    bool                    operator!=(StrSplitWhitespaceIter& other) { return !done; }
-    StrSplitWhitespaceIter& operator++() { return next(), *this; }
-};
-
-struct StrSplitWhitespace : NoCopy {
-    Str target;
-    StrSplitWhitespace(Str target) : target(target) {}
-    StrSplitWhitespaceIter begin() { return StrSplitWhitespaceIter::start(target); }
-    StrSplitWhitespaceIter end() { return StrSplitWhitespaceIter{}; }
-};
+bool cstr_eq(cchar* a, cchar* b) { return strcmp(a, b) == 0; }
 
 // -----------------------------------------------------------------------------
 
@@ -180,8 +188,7 @@ struct U64PrintedWithCommas {
     u64 val;
     U64PrintedWithCommas(u64 val) : val(val) {}
 };
-void print_value(Vec<char>* out, U64PrintedWithCommas value);
+void print_value(Arena* out, U64PrintedWithCommas value);
 
 // -----------------------------------------------------------------------------
-
-}  // namespace
+}  // namespace a

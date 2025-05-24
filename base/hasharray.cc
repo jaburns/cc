@@ -1,111 +1,76 @@
 #include "inc.hh"
-namespace {
-// --------------------------------------------------------------------------------------------------------------------
-#define This HashArray<K, V>
+namespace a {
+// -----------------------------------------------------------------------------
+#define Template template <typename K, typename V, bool PREHASHED>
+#define This HashArray_<K, V, PREHASHED>
 
-forall(K, V) This This::construct(Arena* arena, u32 capacity, u32 max_elems) {
-    u32* hashes     = arena->alloc_many<u32>(capacity).elems;
-    K*   keys       = arena->alloc_many<K>(capacity).elems;
-    V*   values     = arena->alloc_many<V>(capacity).elems;
-    V*   value_stub = arena->alloc_one<V>();
+Template This This::make(Arena* arena, u64 capacity, u64 max_elems) {
+    u64* hashes = arena->push_many<u64>(capacity).elems;
+    K* keys = arena->push_many<K>(capacity).elems;
+    V* values = arena->push_many<V>(capacity).elems;
+    V* value_stub = arena->push<V>();
 
     This map = {};
 
-    map.capacity  = capacity;
+    map.capacity = capacity;
     map.max_elems = max_elems;
 
-    map.count      = 0;
-    map.hashes     = hashes;
-    map.keys       = keys;
-    map.values     = values;
+    map.count = 0;
+    map.hashes = hashes;
+    map.keys = keys;
+    map.values = values;
     map.value_stub = value_stub;
 
     return map;
 }
 
-forall(K, V) This This::alloc_with_cap(Arena* arena, u32 capacity) {
-    capacity      = next_power_of_2(capacity);
-    u32 max_elems = capacity * LOAD_FACTOR_PERCENT / 100;
-    return This::construct(arena, capacity, max_elems);
+Template This This::make_with_cap(Arena* arena, u64 capacity) {
+    capacity = next_power_of_2(capacity);
+    u64 max_elems = capacity * LOAD_FACTOR_PERCENT / 100;
+    return This::make(arena, capacity, max_elems);
 }
 
-forall(K, V) This This::alloc_with_elems(Arena* arena, u32 max_elems) {
-    u32 capacity = next_power_of_2(max_elems * 100 / LOAD_FACTOR_PERCENT);
-    return This::construct(arena, capacity, max_elems);
+Template This This::make_with_elems(Arena* arena, u64 max_elems) {
+    u64 capacity = next_power_of_2(max_elems * 100 / LOAD_FACTOR_PERCENT);
+    return This::make(arena, capacity, max_elems);
 }
 
-no_sanitize_overflow u32 hasharray_murmur3_32_hash(u8* bytes, u32 len) {
-    i32 nblocks = len / 4;
-    u32 h1      = 0x87C263D1;  // seed
-
-    for (i32 i = 0; i < nblocks; i++) {
-        u32 k1;
-        memcpy(&k1, bytes + i * 4, 4);
-        k1 *= 0xCC9E2D51;
-        k1  = (k1 << 15) | (k1 >> 17);
-        k1 *= 0x1B873593;
-        h1 ^= k1;
-        h1  = (h1 << 13) | (h1 >> 19);
-        h1  = h1 * 5 + 0xE6546B64;
+Template u64 This::find_idx(K* key) {
+    u64 hash;
+    if constexpr (PREHASHED) {
+        hash = key->hash;
+    } else {
+        hash = hash64_bytes((u8*)key, sizeof(K));
     }
-
-    u8* tail = bytes + nblocks * 4;
-    u32 k1   = 0;
-
-    switch (len & 3) {
-        case 3:
-            k1 ^= tail[2] << 16;
-        case 2:
-            k1 ^= tail[1] << 8;
-        case 1:
-            k1 ^= tail[0];
-            k1 *= 0xCC9E2D51;
-            k1  = (k1 << 15) | (k1 >> 17);
-            k1 *= 0x1B873593;
-            h1 ^= k1;
-    };
-
-    h1 ^= len;
-    h1 ^= h1 >> 16;
-    h1 *= 0x85EBCA6B;
-    h1 ^= h1 >> 13;
-    h1 *= 0xC2B2AE35;
-    h1 ^= h1 >> 16;
-
-    return h1;
-}
-
-forall(K, V) u32 This::find_idx(K* key) {
-    u32 hash = hasharray_murmur3_32_hash((u8*)key, sizeof(K));
     if (hash < 2) hash += 2;
-    u32 start_idx = hash & (capacity - 1);
-    u32 i;
+    u64 start_idx = hash & (capacity - 1);
+    u64 i;
 
-#define X()                                                                          \
-    {                                                                                \
-        u32 stored_hash = hashes[i];                                                 \
-        if (stored_hash == 0) return UINT32_MAX;                                     \
-        if (stored_hash > 1 && memcmp(key, (u8*)&keys[i], sizeof(K)) == 0) return i; \
+    for (i = start_idx; i < capacity; ++i) {
+        if (hashes[i] == 0) return UINT64_MAX;
+        if (hashes[i] == hash) return i;
+    }
+    for (i = 0; i < start_idx; ++i) {
+        if (hashes[i] == 0) return UINT64_MAX;
+        if (hashes[i] == hash) return i;
     }
 
-    for (i = start_idx; i < capacity; ++i) X();
-    for (i = 0; i < start_idx; ++i) X();
-
-#undef X
-
-    return UINT32_MAX;
+    return UINT64_MAX;
 }
 
-forall(K, V) V* This::insert(K* key) {
-    if (count >= max_elems) {
-        Panic("Fixed-size hasharray is full and cannot be resized");
-    }
+Template V* This::insert(K* key) {
+    AssertM(count < max_elems, "hasharray is full");
 
-    u32 hash = hasharray_murmur3_32_hash((u8*)key, sizeof(K));
+    u64 hash;
+    if constexpr (PREHASHED) {
+        hash = key->hash;
+    } else {
+        hash = hash64_bytes((u8*)key, sizeof(K));
+    }
     if (hash < 2) hash += 2;
 
-    u32 start_idx = hash & (capacity - 1);
-    u32 i;
+    u64 start_idx = hash & (capacity - 1);
+    u64 i;
 
     for (i = start_idx; i < capacity; ++i) {
         if (hashes[i] < 2) goto found;
@@ -119,93 +84,87 @@ forall(K, V) V* This::insert(K* key) {
 found:
     count++;
     hashes[i] = hash;
-    keys[i]   = *key;
+    keys[i] = *key;
 
     V* value = &values[i];
-    return ZeroStruct(value);
+    return StructZero(value);
 }
 
-forall(K, V) V* This::maybe_get(K* key) {
-    u32 i = find_idx(key);
-    return i == UINT32_MAX ? nullptr : &values[i];
+Template V* This::maybe_get(K* key) {
+    u64 i = find_idx(key);
+    return i == UINT64_MAX ? nullptr : &values[i];
 }
 
-forall(K, V) V* This::get(K* key) {
-    u32 i = find_idx(key);
-    return i == UINT32_MAX ? value_stub : &values[i];
+Template V* This::get(K* key) {
+    u64 i = find_idx(key);
+    return i == UINT64_MAX ? value_stub : &values[i];
 }
 
-forall(K, V) V* This::entry(K* key) {
-    u32 hash = hasharray_murmur3_32_hash(key, sizeof(K));
+Template V* This::entry(K* key) {
+    u64 hash;
+    if constexpr (PREHASHED) {
+        hash = key->hash;
+    } else {
+        hash = hash64_bytes((u8*)key, sizeof(K));
+    }
     if (hash < 2) hash += 2;
 
-    u32 start_idx     = hash & (capacity - 1);
-    u32 tombstone_idx = UINT32_MAX;
-    u32 i;
+    u64 start_idx = hash & (capacity - 1);
+    u64 tombstone_idx = UINT64_MAX;
+    u64 i;
 
 #define X()                                                     \
     {                                                           \
-        u32 stored_hash = hashes[i];                            \
+        u64 stored_hash = hashes[i];                            \
         if (stored_hash > 1) {                                  \
-            if (memcmp(key, &keys[i], sizeof(K)) == 0) {        \
-                return &values[i];                              \
-            }                                                   \
+            if (stored_hash == hash) return &values[i];         \
         } else if (stored_hash == 1) {                          \
-            if (tombstone_idx == UINT32_MAX) tombstone_idx = i; \
+            if (tombstone_idx == UINT64_MAX) tombstone_idx = i; \
         } else {                                                \
             goto not_found;                                     \
         }                                                       \
     }
-
     for (i = start_idx; i < capacity; ++i) X();
     for (i = 0; i < start_idx; ++i) X();
-
 #undef X
 
     AssertUnreachable();
 
 not_found:
-    if (count >= max_elems) {
-        Panic("Fixed-size hasharray is full and cannot be resized");
-    }
-    if (tombstone_idx < UINT32_MAX) i = tombstone_idx;
+    AssertM(count < max_elems, "hasharray is full");
+    if (tombstone_idx < UINT64_MAX) i = tombstone_idx;
 
     count++;
     hashes[i] = hash;
-    keys[i]   = *key;
+    keys[i] = *key;
 
     V* value = &values[i];
-    return ZeroStruct(value);
+    return StructZero(value);
 }
 
-forall(K, V) bool This::remove(K* key) {
-    u32 i = find_idx(key);
-    if (i == UINT32_MAX) return false;
+Template bool This::remove(K* key) {
+    u64 i = find_idx(key);
+    if (i == UINT64_MAX) return false;
 
     count--;
     hashes[i] = 1;  // tombstone
     return true;
 }
 
-forall(K, V) void This::clear() {
+Template void This::clear() {
     count = 0;
-    ZeroArray(hashes, capacity);
+    ArrayZero(hashes, capacity);
 }
 
-#undef This
-// --------------------------------------------------------------------------------------------------------------------
-#define This HashArrayIter<K, V>
-
-forall(K, V) This This::start(HashArray<K, V>* map) {
-    This ret = {
-        .idx    = -1,
-        .target = map,
-    };
+Template This::Iter This::Iter::make(This* map) {
+    This::Iter ret = {};
+    ret.idx = -1;
+    ret.target = map;
     ret.next();
     return ret;
 }
 
-forall(K, V) void This::next() {
+Template void This::Iter::next() {
     idx = wrapped_add(idx, 1ull);
     for (;;) {
         if (idx >= target->capacity) {
@@ -213,14 +172,15 @@ forall(K, V) void This::next() {
             return;
         }
         if (target->hashes[idx] > 1) {
-            entry.key   = &target->keys[idx];
-            entry.value = &target->values[idx];
+            key = &target->keys[idx];
+            item = &target->values[idx];
             return;
         }
         ++idx;
     }
 }
 
+#undef Template
 #undef This
-// --------------------------------------------------------------------------------------------------------------------
-}  // namespace
+// -----------------------------------------------------------------------------
+}  // namespace a

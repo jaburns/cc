@@ -3,17 +3,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
 #include <math.h>
 #include <ctype.h>
 
-#include <atomic>
-
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <dirent.h>
 
 #ifdef __APPLE__
 #include <mach/mach_time.h>
@@ -21,7 +20,7 @@
 #include <time.h>
 #endif
 
-#include "../vendor/simde/arm/neon.h"
+#include "../../vendor/simde/arm/neon.h"
 
 #include "defs.hh"
 #include "timing.hh"
@@ -30,16 +29,18 @@
 #include "array.hh"
 #include "arena.hh"
 #include "string.hh"
-#include "math.hh"
-#include "hasharray.hh"
-#include "channel.hh"
-#include "fs.hh"
-#include "xml.hh"
-#include "test.hh"
 
 struct StructMemberInfo {
-    Str   type;
-    Str   name;
+    a::Str type;
+    a::Str name;
     usize size;
     usize offset;
 };
+
+#include "math.hh"
+#include "hash.hh"
+#include "hasharray.hh"
+#include "channel.hh"
+#include "fs.hh"
+#include "json.hh"
+#include "test.hh"

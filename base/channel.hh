@@ -1,43 +1,42 @@
 #pragma once
 #include "inc.hh"
-namespace {
+namespace a {
+// -----------------------------------------------------------------------------
 
 // Multi-producer single-consumer channel for communicating between threads
 //
 // Anyone can push onto the channel from any thread at any time, but the same
 // thread should always be responsible for draining it.
 
-forall(T) class ChannelIter;
-
 forall(T) class Channel {
-    friend class ChannelIter<T>;
+    class Iter {
+        u32 count;
+        u32 idx;
+        T* buffer;
 
-    usize          capacity;
+      public:
+        bool done;
+        T* item;
+        func Iter make(Channel<T>* chan);
+        void next();
+    };
+
+    usize capacity;
     AtomicVal<u32> count_commit[2];
     AtomicVal<u32> cur_buffer_reserve;
-    T*             buffer[2];
+    T* buffer[2];
 
   public:
-    static Channel alloc(Arena* arena, usize capacity);
-    void           push(T* item);
-
-    ChannelIter<T> begin() { return ChannelIter<T>::start(this); }
-    ChannelIter<T> end() { return ChannelIter<T>{}; }
+    func Channel make(Arena* arena, usize capacity);
+    void push(T* item);
+    Iter drain() { return Iter::make(this); }
 };
 
-forall(T) class ChannelIter {
-    u32  count;
-    u32  idx;
-    T*   buffer;
-    bool done;
+// -----------------------------------------------------------------------------
 
-  public:
-    T&           operator*() { return buffer[idx]; }
-    bool         operator!=(ChannelIter& other) { return !done; }
-    ChannelIter& operator++() { return next(), *this; }
+#if TEST
+void test_channel();
+#endif
 
-    static ChannelIter start(Channel<T>* chan);
-    void               next();
-};
-
-}  // namespace
+// -----------------------------------------------------------------------------
+}  // namespace a

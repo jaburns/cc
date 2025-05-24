@@ -1,133 +1,152 @@
 #include "inc.hh"
-namespace {
+namespace a {
 // -----------------------------------------------------------------------------
 
-global thread_local Arena g_arena_scratch[2];
+global thread_local Arena* g_arena_scratch[2];
 
 // -----------------------------------------------------------------------------
 
-Arena Arena::create(MemoryAllocator allocator) {
-    MemoryReservation reservation = allocator.memory_reserve();
-    Arena             ret         = {};
+void Arena::create(usize reserve_size) {
+    DebugAssert(!cur);
+    reservation = memory_get_global_allocator().memory_reservation_acquire(reserve_size);
+    cur = reservation.base;
+    using_reservation = true;
+}
 
-    ret.allocator       = allocator;
-    ret.reservation     = reservation;
-    ret.cur             = reservation.base;
-    ret.resources_stack = nullptr;
+Arena Arena::make_with_buffer(u8* bytes, usize count) {
+    Arena ret = {};
+
+    ret.reservation.base = bytes;
+    ret.reservation.reserved_size = count;
+    ret.cur = bytes;
+    ret.using_reservation = false;
 
     return ret;
 }
 
 void Arena::destroy() {
+    DebugAssert(cur);
     clear();
-    allocator.memory_release(&reservation);
-    ZeroStruct(this);
+    memory_get_global_allocator().memory_reservation_release(&reservation);
+    StructZero(this);
 }
 
-ArenaMark Arena::mark() {
-    return {
-        .ptr = cur
-    };
+void Arena::release_unused_pages() {
+    DebugAssert(cur);
+    memory_get_global_allocator().memory_reservation_commit(&reservation, cur - reservation.base);
 }
 
-void Arena::restore(ArenaMark saved) {
-    while (resources_stack && resources_stack->target >= saved.ptr) {
-        resources_stack->drop(resources_stack->context, resources_stack->target);
-        SllStackPop(resources_stack);
-    }
-    cur = saved.ptr;
-    allocator.memory_commit_size(&reservation, cur - reservation.base);
+void Arena::align(usize alignment) {
+    DebugAssert(cur);
+    cur = (u8*)(((usize)cur + (alignment - 1)) & ~(alignment - 1));
 }
 
-void Arena::clear() {
-    while (resources_stack) {
-        resources_stack->drop(resources_stack->context, resources_stack->target);
-        SllStackPop(resources_stack);
-    }
-    cur = reservation.base;
-    allocator.memory_commit_size(&reservation, 0);
+forall(T) void Arena::align() {
+    align(sizeof(T));
 }
 
-forall(T) T* Arena::alloc_one() {
+// TODO(jaburns) arena shouldn't do a virtual call if it doesn't need more pages.
+// probably can roll MemoryAllocator right into Arena since it's the only thing
+// that uses it, though we need to set the global function pointers still from
+// outside the dll.
+
+forall(T) T* Arena::push() {
+    DebugAssert(cur);
+
     usize size = sizeof(T);
 
-    cur      = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
-    u8* ret  = cur;
-    cur     += size;
-    allocator.memory_commit_size(&reservation, cur - reservation.base);
+    cur = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
+
+    u8* ret = cur;
+    cur += size;
+    if (using_reservation) {
+        memory_get_global_allocator().memory_reservation_commit(&reservation, cur - reservation.base);
+    } else if (cur - reservation.base >= reservation.reserved_size) {
+        Panic("arena overran backing buffer");
+    }
 
     return (T*)memset(ret, 0, size);
 }
 
-void Arena::align() {
-    constexpr usize MAX_ALIGN = 64;
+forall(T) Slice<T> Arena::push_many(usize count) {
+    DebugAssert(cur);
 
-    cur = (u8*)(((usize)cur + (MAX_ALIGN - 1)) & ~(MAX_ALIGN - 1));
-}
-
-forall(T) Slice<T> Arena::alloc_many(usize count) {
     if (count == 0) return Slice<T>{};
 
     usize size = sizeof(T) * count;
 
-    cur      = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
-    u8* ret  = cur;
-    cur     += size;
-    allocator.memory_commit_size(&reservation, cur - reservation.base);
+    cur = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
+
+    u8* ret = cur;
+    cur += size;
+    if (using_reservation) {
+        memory_get_global_allocator().memory_reservation_commit(&reservation, cur - reservation.base);
+    } else if (cur - reservation.base >= reservation.reserved_size) {
+        Panic("arena overran backing buffer");
+    }
 
     return Slice<T>{(T*)memset(ret, 0, size), count};
 }
 
-forall(T, U) T* Arena::alloc_resource(U* context, void (*drop)(U*, T*)) {
-    T*                   result = alloc_one<T>();
-    Arena::ResourceNode* node   = alloc_one<Arena::ResourceNode>();
+void* Arena::push_mem(void* start, usize size) {
+    DebugAssert(cur);
+    if (size == 0) return nullptr;
 
-    node->target  = result;
-    node->drop    = drop;
-    node->context = context;
-    SllStackPush(resources_stack, node);
+    u8* ret = cur;
+    cur += size;
+    if (using_reservation) {
+        memory_get_global_allocator().memory_reservation_commit(&reservation, cur - reservation.base);
+    } else if (cur - reservation.base >= reservation.reserved_size) {
+        Panic("arena overran backing buffer");
+    }
+
+    return MemCopy(ret, start, size);
 }
 
 // -----------------------------------------------------------------------------
 
-void arena_scratch_thread_local_create(MemoryAllocator allocator) {
-    g_arena_scratch[0] = Arena::create(allocator);
-    g_arena_scratch[1] = Arena::create(allocator);
-}
-
-void arena_scratch_thread_local_destroy() {
-    g_arena_scratch[0].destroy();
-    g_arena_scratch[1].destroy();
+void arena_bind_global_scratch(Arena* scratch0, Arena* scratch1) {
+    g_arena_scratch[0] = scratch0;
+    g_arena_scratch[1] = scratch1;
 }
 
 ScratchArena::ScratchArena() {
-    arena = &g_arena_scratch[0];
-    mark  = arena->mark();
+    arena = g_arena_scratch[0];
+    arena_mark = arena->cur;
+}
+
+ScratchArena::ScratchArena(Arena* conflict) {
+    Arena* conflicts[] = {conflict};
+    init(SliceFromRawArray(Arena*, conflicts));
 }
 
 ScratchArena::ScratchArena(Slice<Arena*> conflicts) {
+    init(conflicts);
+}
+
+ScratchArena::~ScratchArena() {
+    arena->cur = arena_mark;
+}
+
+void ScratchArena::init(Slice<Arena*> conflicts) {
     bool matched[2] = {};
     for (u32 i = 0; i < conflicts.count; ++i) {
-        if (&g_arena_scratch[0] == conflicts.elems[i]) {
+        if (g_arena_scratch[0] == conflicts.elems[i]) {
             matched[0] = true;
             if (matched[1]) goto err;
-        } else if (&g_arena_scratch[1] == conflicts.elems[i]) {
+        } else if (g_arena_scratch[1] == conflicts.elems[i]) {
             matched[1] = true;
             if (matched[0]) goto err;
         }
     }
 
-    arena = &g_arena_scratch[matched[0] ? 1 : 0];
-    mark  = arena->mark();
+    arena = g_arena_scratch[matched[0] ? 1 : 0];
+    arena_mark = arena->cur;
 
     return;
 err:
-    Panic("Both scratch arenas passed as conflicts to scratch_acquire");
-}
-
-ScratchArena::~ScratchArena() {
-    arena->restore(mark);
+    Panic("both scratch arenas were passed as conflicts to ScratchArena::init");
 }
 
 // -----------------------------------------------------------------------------
-}  // namespace
+}  // namespace a

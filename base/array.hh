@@ -1,27 +1,36 @@
 #pragma once
 #include "inc.hh"
-namespace {
+namespace a {
 // -----------------------------------------------------------------------------
 
-class Arena;
+struct Arena;
 
 // -----------------------------------------------------------------------------
 
 forall(T) class ArrayIter {
-  private:
-    T*    elems;
+    T* elems;
     usize count;
     usize idx;
 
   public:
-    T&         operator*() { return elems[idx]; }
-    bool       operator!=(ArrayIter& other) { return idx < count; }
-    ArrayIter& operator++() { return idx++, *this; }
+    T* item;
+    bool done;
 
-    static ArrayIter start(T* elems, usize count) {
+    void next() {
+        if (++idx < count) {
+            item = &elems[idx];
+        } else {
+            done = true;
+        }
+    }
+
+    func ArrayIter make(T* elems, usize count) {
         ArrayIter ret = {};
-        ret.elems     = elems;
-        ret.count     = count;
+        ret.elems = elems;
+        ret.count = count;
+        ret.idx = 0;
+        ret.item = elems;
+        ret.done = count == 0;
         return ret;
     }
 };
@@ -29,79 +38,61 @@ forall(T) class ArrayIter {
 // -----------------------------------------------------------------------------
 
 forall(T) struct Slice {
-    T*    elems;
+    T* elems;
     usize count;
 
     forall(U) bool contains_all(Slice<U> search, bool (*compare)(T* a, U* b));
     void fill_copy(T* source);
     void copy_into(void* mem);
     forall(U) Slice<U> cast();
+    usize size();
+    void clear_to_zero() { ArrayZero(elems, count); }
 
     T& operator[](usize index);
 
-    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, count); }
-    ArrayIter<T> end() { return ArrayIter<T>{}; }
+    ArrayIter<T> iter() { return ArrayIter<T>::make(elems, count); }
 };
 
 // -----------------------------------------------------------------------------
 
 forall(T) struct Vec {
-    T*    elems;
+    T* elems;
     usize count;
     usize capacity;
 
-    static Vec alloc(Arena* arena, usize capacity);
-    static Vec from_ptr(T* ptr, usize capacity);
+    func Vec make(Arena* arena, usize capacity);
+    func Vec from_ptr(T* ptr, usize capacity);
 
     T& operator[](usize index);
 
-    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, count); }
-    ArrayIter<T> end() { return ArrayIter<T>{}; }
+    ArrayIter<T> iter() { return ArrayIter<T>::make(elems, count); }
 
     Slice<T> slice();
-    T*       push();
-    T*       pop();
+    T* push();
+    T* pop();
 };
 
-forall(T) void print_value(Vec<char>* out, Slice<T>& slice);
-forall(T) void print_value(Vec<char>* out, Vec<T>& vec);
-
-// -----------------------------------------------------------------------------
-
-forall(T) class GrowableVec : NoCopy {
-    MemoryAllocator   allocator;
-    MemoryReservation reservation;
-
-  public:
-    T*    elems;
-    usize count;
-
-    GrowableVec(MemoryAllocator allocator);
-    ~GrowableVec();
-
-    T*       push();
-    Slice<T> copy_into_arena(Arena* arena);
-};
+forall(T) void print_value(Arena* out, Slice<T>& slice);
+forall(T) void print_value(Arena* out, Vec<T>& vec);
 
 // -----------------------------------------------------------------------------
 #define Template template <typename T, usize COUNT>
 
 Template struct Array {
-    static constexpr usize count = COUNT;
+    konst usize count = COUNT;
 
     T elems[COUNT];
 
     T& operator[](usize index);
 
-    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, COUNT); }
-    ArrayIter<T> end() { return ArrayIter<T>{}; }
+    ArrayIter<T> iter() { return ArrayIter<T>::make(elems, COUNT); }
 
     Slice<T> slice();
 };
 
-Template void print_value(Vec<char>* out, Array<T, COUNT>& array);
+Template void print_value(Arena* out, Array<T, COUNT>& array);
 
-#define RawArrayLen(array)             (sizeof(array) / sizeof((array)[0]))
+#define RawArrayLen(array) (sizeof(array) / sizeof((array)[0]))
 #define SliceFromRawArray(type, array) (Slice<type>{(array), RawArrayLen(array)})
 
 #undef Template
@@ -109,23 +100,58 @@ Template void print_value(Vec<char>* out, Array<T, COUNT>& array);
 #define Template template <typename T, usize CAPACITY>
 
 Template struct InlineVec {
-    static constexpr usize capacity = CAPACITY;
+    konst usize capacity = CAPACITY;
 
-    T     elems[CAPACITY];
+    T elems[CAPACITY];
     usize count;
 
     T& operator[](usize index);
 
-    ArrayIter<T> begin() { return ArrayIter<T>::start(elems, count); }
-    ArrayIter<T> end() { return ArrayIter<T>{}; }
+    ArrayIter<T> iter() { return ArrayIter<T>::make(elems, count); }
 
     Slice<T> slice();
-    T*       push();
-    T*       pop();
+    T* push();
+    T* pop();
 };
 
-Template void print_value(Vec<char>* out, InlineVec<T, CAPACITY>& vec);
+Template void print_value(Arena* out, InlineVec<T, CAPACITY>& vec);
 
 #undef Template
 // -----------------------------------------------------------------------------
-}  // namespace
+
+forall(T) class List {
+    struct Elem {
+        T item;
+        Elem* next;
+        Elem* prev;
+    };
+
+    // it is safe to call List.remove(iter.item) while iterating
+    class Iter {
+        Elem* cur_elem;
+        Elem* next_elem;
+
+      public:
+        bool done;
+        T* item;
+
+        func Iter make(List* target);
+        void next();
+    };
+
+    Elem* head;
+    Elem* tail;
+    Elem* free_list;
+
+  public:
+    usize count;
+
+    T* push(Arena* arena);
+    void remove(T* elem);
+    Slice<T> copy_into_array(Arena* arena);
+
+    Iter iter() { return Iter::make(this); };
+};
+
+// -----------------------------------------------------------------------------
+}  // namespace a

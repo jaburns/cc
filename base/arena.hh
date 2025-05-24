@@ -1,51 +1,41 @@
 #pragma once
 #include "inc.hh"
-namespace {
+namespace a {
 
-struct ArenaMark {
-    u8* ptr;
-};
-
-class Arena {
-    struct ResourceNode {
-        ResourceNode* next;
-        void*         context;
-        void*         target;
-        void          (*drop)(void* context, void* target);
-    };
-
+struct Arena {
     MemoryReservation reservation;
-    ResourceNode*     resources_stack;
-    u8*               cur;
+    u8* cur;
+    bool using_reservation;
+    // ---
 
-  public:
-    MemoryAllocator allocator;
+    void create(usize reserve_size = 0);
+    void destroy();
 
-    static Arena create(MemoryAllocator allocator);
-    void         destroy();
+    func Arena make_with_buffer(u8* bytes, usize count);
 
-    ArenaMark mark();
-    void      restore(ArenaMark saved);
-    void      clear();
-    void      align();
+    void clear() { cur = reservation.base; }
+    void release_unused_pages();
 
-    forall(T) T* alloc_one();
-    forall(T) Slice<T> alloc_many(usize count);
-    forall(T, U) T* alloc_resource(U* context, void (*drop)(U*, T*));
+    void align(usize alignment);
+    forall(T) void align();
+    forall(T) T* push();
+    forall(T) Slice<T> push_many(usize count);
+    void* push_mem(void* start, usize size);
 };
 
-class ScratchArena : NoCopy {
-    ArenaMark mark;
-
-  public:
+struct ScratchArena : MagicScopeStruct {
+    u8* arena_mark;
     Arena* arena;
 
     ScratchArena();
+    ScratchArena(Arena* conflict);
     ScratchArena(Slice<Arena*> conflicts);
     ~ScratchArena();
+
+  private:
+    void init(Slice<Arena*> conflicts);
 };
 
-void arena_scratch_thread_local_create(MemoryAllocator allocator);
-void arena_scratch_thread_local_destroy();
+void arena_bind_global_scratch(Arena* scratch0, Arena* scratch1);
 
-}  // namespace
+}  // namespace a

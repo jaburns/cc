@@ -1,5 +1,5 @@
 #if 0
-clang -o /tmp/jbcbin simd.hh.gen.c && /tmp/jbcbin > simd.hh
+clang -o /tmp/simd_hh_gen_c simd.hh.gen.c && /tmp/simd_hh_gen_c > simd.hh
 exit 0
 #endif
 //
@@ -10,11 +10,11 @@ exit 0
 #include <stdint.h>
 #include <stdlib.h>
 
-#define NONE   0
-#define SMALL  1
+#define NONE 0
+#define SMALL 1
 #define SIGNED 2
-#define BYTES  4
-#define FLOAT  8
+#define BYTES 4
+#define FLOAT 8
 
 void render(char** out, char* jbtype, char* jbname, char* armname0, char* armname1, char* q, char* suffix) {
     *out += sprintf(*out, "#define %s_%-16s simde_v%s%s_%s%s\n", jbtype, jbname, armname0, q, armname1, suffix);
@@ -91,12 +91,12 @@ void generate(char** out, char* type, char* suffix, uint32_t flags) {
 }
 
 int main(void) {
-    char* out  = calloc(1, 1 << 20);
+    char* out = calloc(1, 1 << 20);
     char* out0 = out;
 
     out += sprintf(out, "#pragma once\n");
     out += sprintf(out, "#include \"inc.hh\"\n");
-    out += sprintf(out, "namespace {\n");
+    out += sprintf(out, "namespace a {\n");
     out += sprintf(out, "\n");
     out += sprintf(out, "typedef simde_uint8x8_t  u8x8;\n");
     out += sprintf(out, "typedef simde_uint8x16_t u8x16;\n");
@@ -130,8 +130,12 @@ int main(void) {
     out += sprintf(out, "#define u8x16_from_u16x8 simde_vreinterpretq_u8_u16\n");
     out += sprintf(out, "#define i32x2_from_f32x2 simde_vcvt_s32_f32\n");
     out += sprintf(out, "#define f32x2_from_i32x2 simde_vcvt_f32_s32\n");
+    out += sprintf(out, "#define u32x2_from_f32x2 simde_vcvt_u32_f32\n");
+    out += sprintf(out, "#define f32x2_from_u32x2 simde_vcvt_f32_u32\n");
     out += sprintf(out, "#define i32x4_from_f32x4 simde_vcvtq_s32_f32\n");
     out += sprintf(out, "#define f32x4_from_i32x4 simde_vcvtq_f32_s32\n");
+    out += sprintf(out, "#define u32x4_from_f32x4 simde_vcvtq_u32_f32\n");
+    out += sprintf(out, "#define f32x4_from_u32x4 simde_vcvtq_f32_u32\n");
     out += sprintf(out, "\n");
 
     out += sprintf(out, "// --- 8-bit ---\n\n");

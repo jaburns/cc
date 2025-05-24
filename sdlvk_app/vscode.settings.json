@@ -1,8 +1,0 @@
-{
-    "search.exclude": {
-        "**/vendor": true
-    },
-    "C_Cpp.autoAddFileAssociations": false,
-    "C_Cpp.errorSquiggles": "disabled",
-    "debug.console.closeOnEnd": true
-}
