@@ -53,7 +53,7 @@ Slice<u8> fs_read_file_bytes(Arena* arena, Str path) {
     usize file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    arena->align(32);
+    arena->max_align();
     Slice<u8> content = arena->push_many<u8>(file_size);
     AssertM(fread(content.elems, 1, file_size, file) == file_size || !ferror(file), "failed to read file: %s", g_fs_path_buffer);
     fclose(file);

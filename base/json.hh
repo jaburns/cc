@@ -5,17 +5,18 @@ namespace a {
 
 konst char JSON_SERIALIZE_INDENTATION[256] = "                                                                                                                                                                                                                                                               ";
 
-bool json_expect(Str whole, cchar** read, Str value);
-void json_chomp_whitespace(Str whole, cchar** read);
-bool json_skip_value(Str whole, cchar** read);
-bool json_skip_opened_string(Str whole, cchar** read);
+void json_chomp_whitespace(cchar* end, cchar** read);
+bool json_expect_immediate(cchar* end, cchar** read, Str value);
+bool json_expect(cchar* end, cchar** read, Str value);
+bool json_skip_value(cchar* end, cchar** read);
+bool json_skip_opened_string(cchar* end, cchar** read);
 
 forall(T) bool json_from_file(Arena* base, Str path, T* obj);
 forall(T) void json_to_file(Str path, T* obj);
 
 #define DefJsonSerDe(ty)                               \
     void json_serialize(Arena* out, ty* val, u32 tab); \
-    bool json_deserialize(Arena* arena, Str whole, cchar** read, ty* val);
+    bool json_deserialize(Arena* arena, cchar* end, cchar** read, ty* val);
 
 DefJsonSerDe(bool);
 DefJsonSerDe(Str);
@@ -47,7 +48,7 @@ DefJsonSerDe(uvec4);
 #undef DefJsonSerDe
 
 forall(T) void json_serialize(Arena* out, Slice<T>* val, u32 tab);
-forall(T) bool json_deserialize(Arena* arena, Str whole, cchar** read, Slice<T>* val);
+forall(T) bool json_deserialize(Arena* arena, cchar* end, cchar** read, Slice<T>* val);
 
 // -----------------------------------------------------------------------------
 }  // namespace a

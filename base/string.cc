@@ -293,19 +293,19 @@ Str Str::replace(Arena* out, Str match, Str newval) {
         if (!found) break;
         if (end - found < match.count) break;
 
-        out->push_mem((void*)read, found - read);
+        out->push_bytes((void*)read, found - read);
 
         Str candidate = Str{found, match.count};
         if (candidate.eq(match)) {
-            out->push_mem((void*)newval.elems, newval.count);
+            out->push_bytes((void*)newval.elems, newval.count);
             read = found + match.count;
         } else {
-            out->push_mem((void*)found, 1);
+            out->push_bytes((void*)found, 1);
             read = found + 1;
         }
     }
 
-    out->push_mem((void*)read, end - read);
+    out->push_bytes((void*)read, end - read);
 
     return Str{(char*)result_start, (usize)(out->cur - result_start)};
 }

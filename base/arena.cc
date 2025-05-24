@@ -2,105 +2,152 @@
 namespace a {
 // -----------------------------------------------------------------------------
 
+#define MEMORY_RESERVE_DEFAULT_SIZE 1_mb
+
 global thread_local Arena* g_arena_scratch[2];
+usize Arena::mem_reserve_size;
+usize Arena::mem_commit_size;
+
+// -----------------------------------------------------------------------------
+
+void Arena::global_init() {
+    Arena::mem_reserve_size = (usize)sysconf(_SC_PAGESIZE);
+    Arena::mem_commit_size = (usize)sysconf(_SC_PAGESIZE);
+}
+
+void Arena::thread_init(Arena* scratch0, Arena* scratch1) {
+    g_arena_scratch[0] = scratch0;
+    g_arena_scratch[1] = scratch1;
+}
 
 // -----------------------------------------------------------------------------
 
 void Arena::create(usize reserve_size) {
     DebugAssert(!cur);
-    reservation = memory_get_global_allocator().memory_reservation_acquire(reserve_size);
-    cur = reservation.base;
-    using_reservation = true;
+
+    if (reserve_size == 0) {
+        reserve_size = MEMORY_RESERVE_DEFAULT_SIZE;
+    } else {
+        usize pages = (reserve_size % mem_reserve_size == 0 ? 0 : 1) + reserve_size / mem_reserve_size;
+        reserve_size = mem_reserve_size * pages;
+    }
+
+    u8* ptr = mem_reserve(reserve_size);
+
+    base = ptr,
+    pages_committed = 0,
+    reserved_size = reserve_size,
+    cur = base;
 }
 
 Arena Arena::make_with_buffer(u8* bytes, usize count) {
     Arena ret = {};
-
-    ret.reservation.base = bytes;
-    ret.reservation.reserved_size = count;
+    ret.base = bytes;
+    ret.reserved_size = count;
+    ret.pages_committed = USIZE_MAX;
     ret.cur = bytes;
-    ret.using_reservation = false;
-
     return ret;
 }
 
 void Arena::destroy() {
     DebugAssert(cur);
     clear();
-    memory_get_global_allocator().memory_reservation_release(&reservation);
+    mem_release(base, reserved_size);
     StructZero(this);
 }
 
-void Arena::release_unused_pages() {
+void Arena::max_align() {
     DebugAssert(cur);
-    memory_get_global_allocator().memory_reservation_commit(&reservation, cur - reservation.base);
-}
-
-void Arena::align(usize alignment) {
-    DebugAssert(cur);
-    cur = (u8*)(((usize)cur + (alignment - 1)) & ~(alignment - 1));
+    konst usize MAX_ALIGN = 32;
+    cur = (u8*)(((usize)cur + (MAX_ALIGN - 1)) & ~(MAX_ALIGN - 1));
 }
 
 forall(T) void Arena::align() {
-    align(sizeof(T));
+    DebugAssert(cur);
+    cur = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
 }
-
-// TODO(jaburns) arena shouldn't do a virtual call if it doesn't need more pages.
-// probably can roll MemoryAllocator right into Arena since it's the only thing
-// that uses it, though we need to set the global function pointers still from
-// outside the dll.
 
 forall(T) T* Arena::push() {
     DebugAssert(cur);
-
-    usize size = sizeof(T);
-
-    cur = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
-
-    u8* ret = cur;
-    cur += size;
-    if (using_reservation) {
-        memory_get_global_allocator().memory_reservation_commit(&reservation, cur - reservation.base);
-    } else if (cur - reservation.base >= reservation.reserved_size) {
-        Panic("arena overran backing buffer");
+    if constexpr (sizeof(T) > 1) {
+        cur = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
     }
+    u8* ret = cur;
+    bump(sizeof(T));
+    return (T*)memset(ret, 0, sizeof(T));
+}
 
-    return (T*)memset(ret, 0, size);
+forall(T) T* Arena::push_unaligned() {
+    DebugAssert(cur);
+    u8* ret = cur;
+    bump(sizeof(T));
+    return (T*)memset(ret, 0, sizeof(T));
 }
 
 forall(T) Slice<T> Arena::push_many(usize count) {
     DebugAssert(cur);
-
     if (count == 0) return Slice<T>{};
-
-    usize size = sizeof(T) * count;
-
-    cur = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
-
-    u8* ret = cur;
-    cur += size;
-    if (using_reservation) {
-        memory_get_global_allocator().memory_reservation_commit(&reservation, cur - reservation.base);
-    } else if (cur - reservation.base >= reservation.reserved_size) {
-        Panic("arena overran backing buffer");
+    if constexpr (sizeof(T) > 1) {
+        cur = (u8*)(((usize)cur + (alignof(T) - 1)) & ~(alignof(T) - 1));
     }
-
+    u8* ret = cur;
+    usize size = sizeof(T) * count;
+    bump(size);
     return Slice<T>{(T*)memset(ret, 0, size), count};
 }
 
-void* Arena::push_mem(void* start, usize size) {
+forall(T) Slice<T> Arena::push_many_unaligned(usize count) {
     DebugAssert(cur);
-    if (size == 0) return nullptr;
-
+    if (count == 0) return Slice<T>{};
     u8* ret = cur;
+    usize size = sizeof(T) * count;
+    bump(size);
+    return Slice<T>{(T*)memset(ret, 0, size), count};
+}
+
+void Arena::push_bytes(void* start, usize size) {
+    DebugAssert(cur);
+    if (size == 0) return;
+    u8* ret = cur;
+    bump(size);
+    MemCopy(ret, start, size);
+}
+
+void Arena::bump(usize size) {
     cur += size;
-    if (using_reservation) {
-        memory_get_global_allocator().memory_reservation_commit(&reservation, cur - reservation.base);
-    } else if (cur - reservation.base >= reservation.reserved_size) {
-        Panic("arena overran backing buffer");
+
+    if (pages_committed == USIZE_MAX) {
+        AssertM(cur - base < reserved_size, "arena overran backing buffer");
+        return;
     }
 
-    return MemCopy(ret, start, size);
+    usize total_commit_size = (usize)(cur - base);
+    usize total_pages_required = 1 + total_commit_size / mem_commit_size;  // TODO(jaburns) this could be a bit shift if we store log(commit size)
+    // TODO(jaburns) also, this gives an extra page if total_commit_size == mem_commit_size
+
+    if (total_pages_required > pages_committed) {
+        AssertM(total_pages_required * mem_commit_size <= reserved_size, "memory_reservation_commit would overrun the end of the reserved address space");
+
+        usize cur_size = mem_commit_size * pages_committed;
+        usize add_pages = total_pages_required - pages_committed;
+        pages_committed = total_pages_required;
+
+        mem_commit(base + cur_size, add_pages * mem_commit_size);
+    }
+}
+
+u8* Arena::mem_reserve(usize size) {
+    return (u8*)mmap(NULL, size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+}
+
+void Arena::mem_commit(u8* ptr, usize size) {
+    int result = mprotect(ptr, size, PROT_READ | PROT_WRITE);
+    AssertM(result != -1, "Arena::mem_commit mprotect failed");
+}
+
+void Arena::mem_release(u8* ptr, usize size) {
+    int result = munmap(ptr, size);
+    AssertM(result != -1, "Arena::mem_release munmup failed");
 }
 
 // -----------------------------------------------------------------------------

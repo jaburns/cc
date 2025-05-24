@@ -3,10 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
-#include <stdbool.h>
 #include <string.h>
 #include <math.h>
 #include <ctype.h>
+#include <atomic>
 
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -24,7 +24,6 @@
 
 #include "defs.hh"
 #include "timing.hh"
-#include "memory.hh"
 #include "simd.hh"
 #include "array.hh"
 #include "arena.hh"
@@ -43,4 +42,5 @@ struct StructMemberInfo {
 #include "channel.hh"
 #include "fs.hh"
 #include "json.hh"
+#include "bindump.hh"
 #include "test.hh"

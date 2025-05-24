@@ -1,7 +1,5 @@
 #pragma once
 // -----------------------------------------------------------------------------
-#include <atomic>  // usage should not introduce runtime dependency on libc++
-// -----------------------------------------------------------------------------
 
 #ifndef DEBUG
 #define DEBUG 0
@@ -21,7 +19,7 @@
 #ifdef _MSC_VER
 #define Trap() __debugbreak()
 #else
-#include <csignal>
+#include <signal.h>
 #define Trap() raise(SIGTRAP)
 #endif
 #else
@@ -75,6 +73,8 @@ typedef u64 bool64;
 
 #define cchar const char
 
+#define USIZE_MAX SIZE_T_MAX
+
 // -----------------------------------------------------------------------------
 namespace a {
 // -----------------------------------------------------------------------------
@@ -126,15 +126,15 @@ no_sanitize_overflow u64 wrapped_mul(u64 a, u64 b) { return a * b; }
 
 // any time we want to automatically run code at the end of a scope we should
 // implement a struct that inherits from this one. conventionally, all structs
-// and classes are trivial/POD, unless they inherit this one.
+// and classes are trivially copyable, unless they inherit this one.
 struct MagicScopeStruct {
     MagicScopeStruct() = default;
     MagicScopeStruct(const MagicScopeStruct&) = delete;
     MagicScopeStruct& operator=(const MagicScopeStruct&) = delete;
     MagicScopeStruct(MagicScopeStruct&&) = delete;
     MagicScopeStruct& operator=(MagicScopeStruct&&) = delete;
-    void* operator new(std::size_t) = delete;
-    void* operator new[](std::size_t) = delete;
+    void* operator new(usize) = delete;
+    void* operator new[](usize) = delete;
 };
 
 forall(Fn) class X_Defer : Fn, MagicScopeStruct {

@@ -6,7 +6,7 @@ namespace a {
 struct DeriveStructField {
     Str type;
     Str name;
-    List<Str> tags;
+    // List<Str> tags;
 };
 
 struct DeriveStructInfo {

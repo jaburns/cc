@@ -252,7 +252,6 @@ float vec3a::dot(vec3a rhs) {
     return f32x4_add_across(f32x4_mul(vector, rhs.vector));
 }
 vec3a vec3a::cross(vec3a rhs) {
-    // TODO(jaburns) simd
     return vec3a(
         y * rhs.z - rhs.y * z,
         z * rhs.x - rhs.z * x,
