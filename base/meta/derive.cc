@@ -34,6 +34,13 @@ bool read_include_path(Arena* arena, Str line, Str* out_path) {
     return false;
 }
 
+bool has_tag(List<Str> tags, Str tag) {
+    foreach (it, tags.iter()) {
+        if (it.item->eq(tag)) return true;
+    }
+    return false;
+}
+
 // -----------------------------------------------------------------------------
 
 void handler_derive_struct_info(DeriveStructInfo* info) {
@@ -80,6 +87,7 @@ void handler_derive_json(DeriveStructInfo* info) {
     foreach (it, info->fields.iter()) {
         if (it.item->type.eq("Arena")) {
             arena_name = it.item->name;
+            break;
         }
     }
 
@@ -90,7 +98,7 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("    arena_print(out, \"{\\n\");");
     sb.println("    ");
     foreach_idx(i, it, info->fields.iter()) {
-        if (it.item->type.eq("Arena")) continue;
+        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "serde_skip")) continue;
 
         sb.println("    arena_print(out, tabstr, \"\\\"", it.item->name, "\\\": \");");
         sb.println("    json_serialize(out, &val->", it.item->name, ", tab);");
@@ -111,7 +119,7 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("    if (!json_expect(end, read, \"\\\"\")) return false;");
     sb.println("    if (false) {");
     foreach (it, info->fields.iter()) {
-        if (it.item->type.eq("Arena")) continue;
+        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "serde_skip")) continue;
 
         sb.println("    } else if (json_expect(end, read, \"", it.item->name, "\\\"\")) {");
         sb.println("        if (!json_expect(end, read, \":\")) return false;");
@@ -136,6 +144,7 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("    }");
     sb.println("    return true;");
     sb.println("}");
+
     sb.println("bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ", info->name, "* val) {");
     sb.println("    StructZero(val);");
     if (arena_name.count) {
@@ -174,12 +183,13 @@ void handler_derive_bindump(DeriveStructInfo* info) {
     foreach (it, info->fields.iter()) {
         if (it.item->type.eq("Arena")) {
             arena_name = it.item->name;
+            break;
         }
     }
 
     sb.println("void bin_serialize(Arena* out, ", info->name, "* val) {");
     foreach (it, info->fields.iter()) {
-        if (it.item->type.eq("Arena")) continue;
+        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "serde_skip")) continue;
         sb.println("    bin_serialize(out, &val->", it.item->name, ");");
     }
     sb.println("}");
@@ -192,7 +202,7 @@ void handler_derive_bindump(DeriveStructInfo* info) {
         sb.println("    arena = &val->", arena_name, ";");
     }
     foreach (it, info->fields.iter()) {
-        if (it.item->type.eq("Arena")) continue;
+        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "serde_skip")) continue;
         sb.println("    if (!bin_deserialize(arena, ctx, end, read, &val->", it.item->name, ")) return false;");
     }
     if (info->has_post_deserialize_method) {
@@ -207,7 +217,7 @@ void handler_derive_bindump(DeriveStructInfo* info) {
 
 // -----------------------------------------------------------------------------
 
-void parse_file(Str dir_path, Str file_path) {
+void parse_file(Str dir_path, Str file_path, Slice<DeriveCustomHandler> custom_handlers) {
     ScratchArena scratch{};
 
     Str file = Str::from_slice_char(fs_read_file_bytes(scratch.arena, file_path).cast<char>());
@@ -250,24 +260,19 @@ void parse_file(Str dir_path, Str file_path) {
                 if (read_field(scratch.arena, pre_comment, &type, &name)) {
                     bool skip = false;
 
+                    DeriveStructField* f = info.fields.push(scratch.arena);
+                    f->type = type;
+                    f->name = name;
+
                     Str post_comment = line.after_first_index('/').trim();
                     if (post_comment.count > 0) {
                         auto tags_it = post_comment.split_whitespace_iter();
                         if (tags_it.item.eq("/!")) {
                             tags_it.next();
                             foreach (tag, tags_it) {
-                                // *f->tags.push(scratch.arena) = tag.item;
-                                if (tag.item.eq("skip")) {
-                                    skip = true;
-                                }
+                                *f->tags.push(scratch.arena) = tag.item;
                             }
                         }
-                    }
-
-                    if (!skip) {
-                        DeriveStructField* f = info.fields.push(scratch.arena);
-                        f->type = type;
-                        f->name = name;
                     }
                 } else {
                     bool pds = check_is_post_deserialize_method(line);
@@ -291,6 +296,12 @@ void parse_file(Str dir_path, Str file_path) {
                         *handlers.push() = handler_derive_bindump;
                     } else if (it.item.eq("structinfo")) {
                         *handlers.push() = handler_derive_struct_info;
+                    } else {
+                        foreach (han, custom_handlers.iter()) {
+                            if (it.item.eq(han.item->match_name)) {
+                                *handlers.push() = han.item->handler;
+                            }
+                        }
                     }
                 }
             }
@@ -298,7 +309,7 @@ void parse_file(Str dir_path, Str file_path) {
     }
 }
 
-void walk_dir(Vec<Str>* path_parts) {
+void walk_dir(Vec<Str>* path_parts, Slice<DeriveCustomHandler> custom_handlers) {
     ScratchArena scratch{};
     Str path = Str::join(scratch.arena, path_parts->slice(), '/');
 
@@ -307,11 +318,11 @@ void walk_dir(Vec<Str>* path_parts) {
 
         if (it.item_is_dir) {
             if (!it.item.eq("meta")) {
-                walk_dir(path_parts);
+                walk_dir(path_parts, custom_handlers);
             }
         } else {
             Str file_path = Str::join(scratch.arena, path_parts->slice(), '/');
-            parse_file(path, file_path);
+            parse_file(path, file_path, custom_handlers);
         }
 
         path_parts->pop();
@@ -321,11 +332,11 @@ void walk_dir(Vec<Str>* path_parts) {
 }  // namespace derive_
 // -----------------------------------------------------------------------------
 
-void derive_run(Str root_dir) {
+void derive_run(Str root_dir, Slice<DeriveCustomHandler> custom_handlers) {
     ScratchArena scratch{};
     Vec<Str> path_parts = Vec<Str>::make(scratch.arena, 64);
     *path_parts.push() = "src";
-    derive_::walk_dir(&path_parts);
+    derive_::walk_dir(&path_parts, custom_handlers);
 }
 
 // -----------------------------------------------------------------------------

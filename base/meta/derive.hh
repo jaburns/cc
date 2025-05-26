@@ -6,7 +6,7 @@ namespace a {
 struct DeriveStructField {
     Str type;
     Str name;
-    // List<Str> tags;
+    List<Str> tags;
 };
 
 struct DeriveStructInfo {
@@ -19,7 +19,12 @@ struct DeriveStructInfo {
 
 typedef void (*DeriveHandler)(DeriveStructInfo* info);
 
-void derive_run(Str root_dir);
+struct DeriveCustomHandler {
+    Str match_name;
+    DeriveHandler handler;
+};
+
+void derive_run(Str root_dir, Slice<DeriveCustomHandler> custom_handlers);
 
 // -----------------------------------------------------------------------------
 }  // namespace a
