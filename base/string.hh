@@ -103,21 +103,24 @@ forall(... Args) Str arena_println(Arena* out, Args... args);
 
 // -----------------------------------------------------------------------------
 
-struct Str32 {
-    char elems[31];
-    u8 zero;
+template <u8 CAPACITY>
+struct InlineStr {
+    konst u8 capacity = CAPACITY;
+
+    u8 count;
+    char elems[CAPACITY];
 
   public:
-    cchar* to_cstr() { return elems; }
-
+    Str to_str() { return Str{elems, count}; }
     void set(Str str) {
-        Assert(str.count <= 31);
-        StructZero(this);
+        Assert(str.count <= CAPACITY);
+        count = str.count;
         ArrayCopy(elems, str.elems, str.count);
     }
 };
 
-void print_value(Arena* out, Str32 value);
+template <u8 CAPACITY>
+void print_value(Arena* out, InlineStr<CAPACITY>* value);
 
 // -----------------------------------------------------------------------------
 

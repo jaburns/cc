@@ -11,16 +11,20 @@ bool json_expect(cchar* end, cchar** read, Str value);
 bool json_skip_value(cchar* end, cchar** read);
 bool json_skip_opened_string(cchar* end, cchar** read);
 
-forall(T) bool json_from_file(Arena* base, Str path, T* obj);
 forall(T) void json_to_file(Str path, T* obj);
+forall(T) void json_from_file(Arena* base, void* ctx, Str path, T* obj);
 
 #define DefJsonSerDe(ty)                               \
     void json_serialize(Arena* out, ty* val, u32 tab); \
-    bool json_deserialize(Arena* arena, cchar* end, cchar** read, ty* val);
+    bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ty* val);
 
 DefJsonSerDe(bool);
 DefJsonSerDe(Str);
-DefJsonSerDe(Str32);
+
+template <u8 CAPACITY>
+void json_serialize(Arena* out, InlineStr<CAPACITY>* val, u32 tab);
+template <u8 CAPACITY>
+bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, InlineStr<CAPACITY>* val);
 
 DefJsonSerDe(u8);
 DefJsonSerDe(u16);
@@ -48,7 +52,7 @@ DefJsonSerDe(uvec4);
 #undef DefJsonSerDe
 
 forall(T) void json_serialize(Arena* out, Slice<T>* val, u32 tab);
-forall(T) bool json_deserialize(Arena* arena, cchar* end, cchar** read, Slice<T>* val);
+forall(T) bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, Slice<T>* val);
 
 // -----------------------------------------------------------------------------
 }  // namespace a

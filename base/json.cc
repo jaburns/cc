@@ -87,23 +87,23 @@ bool json_skip_value(cchar* end, cchar** read) {
 
 // -----------------------------------------------------------------------------
 
-forall(T) bool json_from_file(Arena* base, Str path, T* obj) {
-    ScratchArena scratch(base);
-    if (fs_file_exists(path)) {
-        Str json = Str::from_slice_char(fs_read_file_bytes(scratch.arena, path).cast<char>());
-        if (json_deserialize(base, json.elems + json.count, &json.elems, obj)) {
-            return true;
-        }
-    }
-    StructZero(obj);
-    return false;
-}
-
 forall(T) void json_to_file(Str path, T* obj) {
     ScratchArena scratch{};
     auto sb = StrBuilder::make(scratch.arena);
     json_serialize(scratch.arena, obj, 0);
     fs_write_file_bytes(path, sb.to_str().to_slice().cast<u8>());
+}
+
+forall(T) void json_from_file(Arena* base, void* ctx, Str path, T* obj) {
+    ScratchArena scratch(base);
+    if (fs_file_exists(path)) {
+        Str json = Str::from_slice_char(fs_read_file_bytes(scratch.arena, path).cast<char>());
+        if (json_deserialize(base, ctx, json.elems + json.count, &json.elems, obj)) {
+            return;
+        }
+        Panic("json_from_file: deserialize failed");
+    }
+    Panic("json_from_file: file does not exist");
 }
 
 // -----------------------------------------------------------------------------
@@ -116,7 +116,7 @@ void json_serialize(Arena* out, bool* val, u32 tab) {
     }
 }
 
-bool json_deserialize(Arena* arena, cchar* end, cchar** read, bool* val) {
+bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, bool* val) {
     json_chomp_whitespace(end, read);
     if (json_expect_immediate(end, read, "true")) {
         *val = true;
@@ -130,10 +130,11 @@ bool json_deserialize(Arena* arena, cchar* end, cchar** read, bool* val) {
 }
 
 void json_serialize(Arena* out, Str* val, u32 tab) {
+    // TODO(jaburns) need to escape quotes and backslashes
     arena_print(out, '"', *val, '"');
 }
 
-bool json_deserialize(Arena* arena, cchar* end, cchar** read, Str* val) {
+bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, Str* val) {
     bool escaping = false;
     u8* arena_start = arena->cur;
 
@@ -163,38 +164,42 @@ fail:
     return false;
 }
 
-void json_serialize(Arena* out, Str32* val, u32 tab) {
-    arena_print(out, '"', *val, '"');
+template <u8 CAPACITY>
+void json_serialize(Arena* out, InlineStr<CAPACITY>* val, u32 tab) {
+    Str str = val->to_str();
+    json_serialize(out, &str, tab);
 }
 
-bool json_deserialize(Arena* arena, cchar* end, cchar** read, Str32* val) {
+template <u8 CAPACITY>
+bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, InlineStr<CAPACITY>* val) {
     ScratchArena scratch(arena);
-    Str tmp = {};
-    if (!json_deserialize(scratch.arena, end, read, &tmp)) goto fail;
-    if (tmp.count > 31) goto fail;
-    MemCopy(val->elems, tmp.elems, tmp.count);
+    Str str = {};
+    if (!json_deserialize(scratch.arena, ctx, end, read, &str)) goto fail;
+    if (str.count > CAPACITY) goto fail;
+    MemCopy(val->elems, str.elems, str.count);
+    val->count = str.count;
     return true;
 fail:
-    log("json: failed to parse Str32");
+    log("json: failed to parse InlineStr");
     return false;
 }
 
 // -----------------------------------------------------------------------------
 
-#define ImplJsonNumber(ty_, reader_)                                          \
-    void json_serialize(Arena* out, ty_* val, u32 tab) {                      \
-        arena_print(out, *val);                                               \
-    }                                                                         \
-    bool json_deserialize(Arena* arena, cchar* end, cchar** read, ty_* val) { \
-        cchar* start = *read;                                                 \
-        json_chomp_whitespace(end, read);                                     \
-        ty_ parsed = (ty_)reader_(*read, (char**)read, 10);                   \
-        if (*read == start) {                                                 \
-            log("json: failed to parse number");                              \
-            return false;                                                     \
-        }                                                                     \
-        *val = parsed;                                                        \
-        return true;                                                          \
+#define ImplJsonNumber(ty_, reader_)                                                     \
+    void json_serialize(Arena* out, ty_* val, u32 tab) {                                 \
+        arena_print(out, *val);                                                          \
+    }                                                                                    \
+    bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ty_* val) { \
+        cchar* start = *read;                                                            \
+        json_chomp_whitespace(end, read);                                                \
+        ty_ parsed = (ty_)reader_(*read, (char**)read, 10);                              \
+        if (*read == start) {                                                            \
+            log("json: failed to parse number");                                         \
+            return false;                                                                \
+        }                                                                                \
+        *val = parsed;                                                                   \
+        return true;                                                                     \
     }
 
 #define json_strtof(buf, read, base) strtof(buf, read)
@@ -217,18 +222,18 @@ ImplJsonNumber(double, json_strtod);
 
 // -----------------------------------------------------------------------------
 
-#define ImplJsonVec(ty_, underlying_, size_)                                       \
-    void json_serialize(Arena* out, ty_* val, u32 tab) {                           \
-        Slice<underlying_> elems = Slice<underlying_>{(underlying_*)val, size_};   \
-        json_serialize(out, &elems, tab);                                          \
-    }                                                                              \
-    bool json_deserialize(Arena* unused_out, cchar* end, cchar** read, ty_* val) { \
-        u8 buffer[2 * sizeof(ty_) * size_];                                        \
-        Arena scratch = Arena::make_with_buffer(buffer, RawArrayLen(buffer));      \
-        Slice<underlying_> slice;                                                  \
-        json_deserialize(&scratch, end, read, &slice);                             \
-        *val = *(ty_*)slice.elems;                                                 \
-        return true;                                                               \
+#define ImplJsonVec(ty_, underlying_, size_)                                             \
+    void json_serialize(Arena* out, ty_* val, u32 tab) {                                 \
+        Slice<underlying_> elems = Slice<underlying_>{(underlying_*)val, size_};         \
+        json_serialize(out, &elems, tab);                                                \
+    }                                                                                    \
+    bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ty_* val) { \
+        u8 buffer[2 * sizeof(ty_) * size_];                                              \
+        Arena scratch = Arena::make_with_buffer(buffer, RawArrayLen(buffer));            \
+        Slice<underlying_> slice;                                                        \
+        json_deserialize(&scratch, ctx, end, read, &slice);                              \
+        *val = *(ty_*)slice.elems;                                                       \
+        return true;                                                                     \
     }
 
 ImplJsonVec(vec2, float, 2);
@@ -268,7 +273,7 @@ forall(T) void json_serialize(Arena* out, Slice<T>* val, u32 tab) {
     arena_print(out, tabstr, ']');
 }
 
-forall(T) bool json_deserialize(Arena* arena, cchar* end, cchar** read, Slice<T>* val) {
+forall(T) bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, Slice<T>* val) {
     ScratchArena scratch(arena);
     scratch.arena->align<T>();
     T* first_elem = (T*)scratch.arena->cur;
@@ -280,7 +285,7 @@ forall(T) bool json_deserialize(Arena* arena, cchar* end, cchar** read, Slice<T>
         if (json_expect(end, read, "]")) break;
 
         T* elem = scratch.arena->push<T>();
-        if (!json_deserialize(arena, end, read, elem)) goto fail;
+        if (!json_deserialize(arena, ctx, end, read, elem)) goto fail;
         elems++;
 
         json_chomp_whitespace(end, read);

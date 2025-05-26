@@ -18,6 +18,13 @@ bool read_field(Arena* arena, Str line, Str* out_type, Str* out_name) {
     return false;
 }
 
+bool check_is_post_deserialize_method(Str line) {
+    if (line.count == 0) return false;
+    int pos = -1;
+    sscanf(line.elems, "void post_deserialize (%n", &pos);
+    return pos > -1;
+}
+
 bool read_include_path(Arena* arena, Str line, Str* out_path) {
     char* path = arena->push_many<char>(256).elems;
     if (sscanf(line.elems, " #include \"%255[^\"]\"", path) == 1) {
@@ -36,9 +43,9 @@ void handler_derive_struct_info(DeriveStructInfo* info) {
     sb.println("StructMemberInfo x_", info->name, "_MEMBERS_ARRAY[] = {");
     foreach (it, info->fields.iter()) {
         sb.println("{");
-        sb.println("    .type   = \"", it.item->type, "\",");
-        sb.println("    .name   = \"", it.item->name, "\",");
-        sb.println("    .size   = sizeof(", it.item->type, "),");
+        sb.println("    .type = \"", it.item->type, "\",");
+        sb.println("    .name = \"", it.item->name, "\",");
+        sb.println("    .size = sizeof(", it.item->type, "),");
         sb.println("    .offset = offsetof(", info->name, ", ", it.item->name, "),");
         sb.println("},");
     }
@@ -62,8 +69,8 @@ void handler_derive_json(DeriveStructInfo* info) {
     auto sb = StrBuilder::make(scratch.arena);
 
     sb.println("void json_serialize(Arena* out, ", info->name, "* val, u32 tab);");
-    sb.println("bool json_deserialize_field(Arena* arena, cchar* end, cchar** read, ", info->name, "* val, bool* cont);");
-    sb.println("bool json_deserialize(Arena* arena, cchar* end, cchar** read, ", info->name, "* val);");
+    sb.println("bool json_deserialize_field(Arena* arena, void* ctx, cchar* end, cchar** read, ", info->name, "* val, bool* cont);");
+    sb.println("bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ", info->name, "* val);");
 
     sb.println("");
     fs_append_file_bytes(info->target_hh_path, sb.to_str().to_slice().cast<u8>());
@@ -82,13 +89,12 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("    Str tabstr = Str{JSON_SERIALIZE_INDENTATION, 2 * tab};");
     sb.println("    arena_print(out, \"{\\n\");");
     sb.println("    ");
-    int i = 0;
-    foreach (it, info->fields.iter()) {
+    foreach_idx(i, it, info->fields.iter()) {
         if (it.item->type.eq("Arena")) continue;
 
         sb.println("    arena_print(out, tabstr, \"\\\"", it.item->name, "\\\": \");");
         sb.println("    json_serialize(out, &val->", it.item->name, ", tab);");
-        if (++i < info->fields.count) {
+        if (i < info->fields.count) {
             sb.println("    arena_print(out, \",\\n\");");
         } else {
             sb.println("    arena_print(out, \"\\n\");");
@@ -101,7 +107,7 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("}");
     sb.println("");
 
-    sb.println("bool json_deserialize_field(Arena* arena, cchar* end, cchar** read, ", info->name, "* val, bool* cont) {");
+    sb.println("bool json_deserialize_field(Arena* arena, void* ctx, cchar* end, cchar** read, ", info->name, "* val, bool* cont) {");
     sb.println("    if (!json_expect(end, read, \"\\\"\")) return false;");
     sb.println("    if (false) {");
     foreach (it, info->fields.iter()) {
@@ -109,7 +115,7 @@ void handler_derive_json(DeriveStructInfo* info) {
 
         sb.println("    } else if (json_expect(end, read, \"", it.item->name, "\\\"\")) {");
         sb.println("        if (!json_expect(end, read, \":\")) return false;");
-        sb.println("        if (!json_deserialize(arena, end, read, &val->", it.item->name, ")) return false;");
+        sb.println("        if (!json_deserialize(arena, ctx, end, read, &val->", it.item->name, ")) return false;");
     }
     sb.println("    } else {");
     sb.println("        if (!json_skip_opened_string(end, read)) return false;");
@@ -130,7 +136,7 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("    }");
     sb.println("    return true;");
     sb.println("}");
-    sb.println("bool json_deserialize(Arena* arena, cchar* end, cchar** read, ", info->name, "* val) {");
+    sb.println("bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ", info->name, "* val) {");
     sb.println("    StructZero(val);");
     if (arena_name.count) {
         sb.println("    val->", arena_name, ".create();");
@@ -139,8 +145,11 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("    if (!json_expect(end, read, \"{\")) return false;");
     sb.println("    bool cont = true;");
     sb.println("    while (cont) {");
-    sb.println("        if (!json_deserialize_field(arena, end, read, val, &cont)) return false;");
+    sb.println("        if (!json_deserialize_field(arena, ctx, end, read, val, &cont)) return false;");
     sb.println("    }");
+    if (info->has_post_deserialize_method) {
+        sb.println("    val->post_deserialize(ctx);");
+    }
     sb.println("    return true;");
     sb.println("}");
 
@@ -155,7 +164,7 @@ void handler_derive_bindump(DeriveStructInfo* info) {
     auto sb = StrBuilder::make(scratch.arena);
 
     sb.println("void bin_serialize(Arena* out, ", info->name, "* val);");
-    sb.println("bool bin_deserialize(Arena* arena, u8* end, u8** read, ", info->name, "* val);");
+    sb.println("bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, ", info->name, "* val);");
 
     sb.println("");
     fs_append_file_bytes(info->target_hh_path, sb.to_str().to_slice().cast<u8>());
@@ -169,7 +178,6 @@ void handler_derive_bindump(DeriveStructInfo* info) {
     }
 
     sb.println("void bin_serialize(Arena* out, ", info->name, "* val) {");
-    int i = 0;
     foreach (it, info->fields.iter()) {
         if (it.item->type.eq("Arena")) continue;
         sb.println("    bin_serialize(out, &val->", it.item->name, ");");
@@ -177,7 +185,7 @@ void handler_derive_bindump(DeriveStructInfo* info) {
     sb.println("}");
     sb.println("");
 
-    sb.println("bool bin_deserialize(Arena* arena, u8* end, u8** read, ", info->name, "* val) {");
+    sb.println("bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, ", info->name, "* val) {");
     sb.println("    StructZero(val);");
     if (arena_name.count) {
         sb.println("    val->", arena_name, ".create();");
@@ -185,7 +193,10 @@ void handler_derive_bindump(DeriveStructInfo* info) {
     }
     foreach (it, info->fields.iter()) {
         if (it.item->type.eq("Arena")) continue;
-        sb.println("    if (!bin_deserialize(arena, end, read, &val->", it.item->name, ")) return false;");
+        sb.println("    if (!bin_deserialize(arena, ctx, end, read, &val->", it.item->name, ")) return false;");
+    }
+    if (info->has_post_deserialize_method) {
+        sb.println("    val->post_deserialize(ctx);");
     }
     sb.println("    return true;");
     sb.println("}");
@@ -257,6 +268,11 @@ void parse_file(Str dir_path, Str file_path) {
                         DeriveStructField* f = info.fields.push(scratch.arena);
                         f->type = type;
                         f->name = name;
+                    }
+                } else {
+                    bool pds = check_is_post_deserialize_method(line);
+                    if (pds) {
+                        info.has_post_deserialize_method = true;
                     }
                 }
             }

@@ -195,12 +195,9 @@ forall(T) void This::remove(T* elem) {
 
 forall(T) Slice<T> This::copy_into_array(Arena* arena) {
     Slice<T> ret = arena->push_many<T>(count);
-
-    usize i = 0;
-    foreach (it, iter()) {
-        ret.elems[i++] = *it.item;
+    foreach_idx(i, it, iter()) {
+        ret.elems[i] = *it.item;
     }
-
     return ret;
 }
 

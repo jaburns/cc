@@ -7,16 +7,20 @@ namespace a {
 #endif
 // -----------------------------------------------------------------------------
 
-forall(T) bool bin_from_file(Arena* base, Str path, T* obj);
 forall(T) void bin_to_file(Str path, T* obj);
+forall(T) void bin_from_file(Arena* base, void* ctx, Str path, T* obj);
 
 #define DefBinDumpSerDe(ty_)                  \
     void bin_serialize(Arena* out, ty_* val); \
-    bool bin_deserialize(Arena* arena, u8* end, u8** read, ty_* val);
+    bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, ty_* val);
 
 DefBinDumpSerDe(bool);
 DefBinDumpSerDe(Str);
-DefBinDumpSerDe(Str32);
+
+template <u8 CAPACITY>
+void bin_serialize(Arena* out, InlineStr<CAPACITY>* val);
+template <u8 CAPACITY>
+bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, InlineStr<CAPACITY>* val);
 
 DefBinDumpSerDe(u8);
 DefBinDumpSerDe(u16);
@@ -44,7 +48,7 @@ DefBinDumpSerDe(uvec4);
 #undef DefBinDumpSerDe
 
 forall(T) void bin_serialize(Arena* out, Slice<T>* val);
-forall(T) bool bin_deserialize(Arena* arena, u8* end, u8** read, Slice<T>* val);
+forall(T) bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, Slice<T>* val);
 
 // -----------------------------------------------------------------------------
 }  // namespace a

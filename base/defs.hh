@@ -34,6 +34,10 @@
 #define foreach(iter, iterator) \
     for (auto iter = (iterator); !iter.done; iter.next())
 
+#define foreach_idx(idx, iter, iterator)                           \
+    for (usize idx = 0, foreachi__ = 0; !foreachi__; ++foreachi__) \
+        for (auto iter = (iterator); !iter.done; ++idx, iter.next())
+
 #define X_forall_dispatch(_1, _2, _3, _4, name, ...) \
     name
 #define X_forall_1(t1) template <typename t1>

@@ -14,6 +14,7 @@ struct DeriveStructInfo {
     List<DeriveStructField> fields;
     Str target_hh_path;
     Str target_cc_path;
+    bool has_post_deserialize_method;
 };
 
 typedef void (*DeriveHandler)(DeriveStructInfo* info);

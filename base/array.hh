@@ -102,8 +102,8 @@ Template void print_value(Arena* out, Array<T, COUNT>& array);
 Template struct InlineVec {
     konst usize capacity = CAPACITY;
 
-    T elems[CAPACITY];
     usize count;
+    T elems[CAPACITY];
 
     T& operator[](usize index);
 

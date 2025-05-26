@@ -89,8 +89,9 @@ void print_value(Arena* out, Str value) {
     MemCopy(out_buf.elems, value.elems, value.count);
 }
 
-void print_value(Arena* out, Str32 value) {
-    print_value(out, value.to_cstr());
+template <u8 CAPACITY>
+void print_value(Arena* out, InlineStr<CAPACITY>* value) {
+    print_value(out, value->to_str());
 }
 
 // -----------------------------------------------------------------------------
