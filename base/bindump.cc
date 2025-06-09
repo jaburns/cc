@@ -10,6 +10,13 @@ forall(T) void bin_to_file(Str path, T* obj) {
     fs_write_file_bytes(path, Slice<u8>{start, (usize)(scratch.arena->cur - start)});
 }
 
+forall(T) Slice<u8> bin_to_slice(Arena* out, T* obj) {
+    out->max_align();
+    u8* start = out->cur;
+    bin_serialize(out, obj);
+    return Slice<u8>{start, (usize)(out->cur - start)};
+}
+
 forall(T) void bin_from_file(Arena* base, void* ctx, Str path, T* obj) {
     ScratchArena scratch(base);
     if (fs_file_exists(path)) {
@@ -20,6 +27,10 @@ forall(T) void bin_from_file(Arena* base, void* ctx, Str path, T* obj) {
         Panic("bin_from_file: deserialize failed");
     }
     Panic("bin_from_file: file does not exist");
+}
+
+forall(T) void bin_from_slice(Arena* base, void* ctx, Slice<u8> bin, T* obj) {
+    AssertM(bin_deserialize(base, ctx, bin.elems + bin.count, &bin.elems, obj), "bin_from_file: deserialize failed");
 }
 
 // -----------------------------------------------------------------------------
@@ -106,7 +117,35 @@ ImplBinCopy(uvec2);
 ImplBinCopy(uvec3);
 ImplBinCopy(uvec4);
 
+void bin_serialize(Arena* out, vec3a* val) {
+    vec3 as3 = val->to_vec3();
+    bin_serialize(out, &as3);
+}
+bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, vec3a* val) {
+    vec3 as3;
+    if (!bin_deserialize(arena, ctx, end, read, &as3)) return false;
+    *val = as3.to_vec3a();
+    return true;
+}
+
 #undef ImplBinCopy
+
+// -----------------------------------------------------------------------------
+
+forall(T) void bin_serialize(Arena* out, Vec<T>* val) {
+    Slice<T> slice = val->slice();
+    bin_serialize(out, &slice);
+}
+
+forall(T) bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, Vec<T>* val, usize p0_capacity) {
+    u32 count = 0;
+    if (!bin_deserialize(arena, ctx, end, read, &count)) return false;
+    *val = Vec<T>::make(arena, p0_capacity);
+    for (u32 i = 0; i < count; ++i) {
+        if (!bin_deserialize(arena, ctx, end, read, val->push())) return false;
+    }
+    return true;
+}
 
 // -----------------------------------------------------------------------------
 
@@ -124,6 +163,29 @@ forall(T) bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, Slic
     *val = arena->push_many<T>(count);
     for (u32 i = 0; i < val->count; ++i) {
         if (!bin_deserialize(arena, ctx, end, read, &val->elems[i])) return false;
+    }
+    return true;
+}
+
+// -----------------------------------------------------------------------------
+
+forall(T) void bin_serialize(Arena* out, List<T>* val) {
+    u8 cont = 1, done = 0;
+    foreach (it, val->iter()) {
+        bin_serialize(out, &cont);
+        bin_serialize(out, it.item);
+    }
+    bin_serialize(out, &done);
+}
+
+forall(T) bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, List<T>* val) {
+    ZeroStruct(val);
+    u8 cont = 1;
+    for (;;) {
+        if (!bin_deserialize(arena, ctx, end, read, &cont)) return false;
+        if (!cont) break;
+        T* item = val->push(arena);
+        if (!bin_deserialize(arena, ctx, end, read, item)) return false;
     }
     return true;
 }

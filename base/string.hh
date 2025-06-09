@@ -95,11 +95,13 @@ struct Str {
 
 void print_value(Arena* out, Str value);
 
+#define StaticStrLen(cstr) (sizeof(cstr) - 1)
+
 // -----------------------------------------------------------------------------
 
-void arena_print(Arena* out);
-forall(T, ... Args) Str arena_print(Arena* out, T value, Args... args);
-forall(... Args) Str arena_println(Arena* out, Args... args);
+void str_print(Arena* out);
+forall(T, ... Args) Str str_print(Arena* out, T value, Args... args);
+forall(... Args) Str str_println(Arena* out, Args... args);
 
 // -----------------------------------------------------------------------------
 
@@ -114,6 +116,7 @@ struct InlineStr {
     Str to_str() { return Str{elems, count}; }
     void set(Str str) {
         Assert(str.count <= CAPACITY);
+        ZeroStruct(this);
         count = str.count;
         ArrayCopy(elems, str.elems, str.count);
     }
@@ -135,8 +138,8 @@ struct StrBuilder {
         return ret;
     }
 
-    forall(... Args) void print(Args... args) { arena_print(arena, args...); }
-    forall(... Args) void println(Args... args) { arena_println(arena, args...); }
+    forall(... Args) void print(Args... args) { str_print(arena, args...); }
+    forall(... Args) void println(Args... args) { str_println(arena, args...); }
     Str to_str() { return Str{(char*)arena_start, (usize)(arena->cur - arena_start)}; }
 };
 

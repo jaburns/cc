@@ -110,9 +110,9 @@ forall(T) void json_from_file(Arena* base, void* ctx, Str path, T* obj) {
 
 void json_serialize(Arena* out, bool* val, u32 tab) {
     if (*val) {
-        arena_print(out, "true");
+        print_value(out, "true");
     } else {
-        arena_print(out, "false");
+        print_value(out, "false");
     }
 }
 
@@ -130,8 +130,39 @@ bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, bool* v
 }
 
 void json_serialize(Arena* out, Str* val, u32 tab) {
-    // TODO(jaburns) need to escape quotes and backslashes
-    arena_print(out, '"', *val, '"');
+    cchar* read = val->elems;
+    cchar* end = read + val->count;
+    print_value(out, '"');
+    while (read < end) {
+        switch (*read) {
+            case '"':
+                print_value(out, Str("\\\""));
+                break;
+            case '\\':
+                print_value(out, Str("\\\\"));
+                break;
+            case '\b':
+                print_value(out, Str("\\b"));
+                break;
+            case '\f':
+                print_value(out, Str("\\f"));
+                break;
+            case '\n':
+                print_value(out, Str("\\n"));
+                break;
+            case '\r':
+                print_value(out, Str("\\r"));
+                break;
+            case '\t':
+                print_value(out, Str("\\t"));
+                break;
+            default:
+                print_value(out, *read);
+                break;
+        }
+        ++read;
+    }
+    print_value(out, '"');
 }
 
 bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, Str* val) {
@@ -141,7 +172,35 @@ bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, Str* va
     if (!json_expect(end, read, "\"")) goto fail;
 
     for (;;) {
-        if (!escaping) {
+        if (escaping) {
+            switch (**read) {
+                case '"':
+                case '\\':
+                case '/':
+                    *arena->push<char>() = **read;
+                    break;
+                case 'b':
+                    *arena->push<char>() = '\b';
+                    break;
+                case 'f':
+                    *arena->push<char>() = '\f';
+                    break;
+                case 'n':
+                    *arena->push<char>() = '\n';
+                    break;
+                case 'r':
+                    *arena->push<char>() = '\r';
+                    break;
+                case 't':
+                    *arena->push<char>() = '\t';
+                    break;
+                case 'u':
+                    Panic("Str::json_deserialize does not handle \\u escape sequence");
+                default:
+                    Panic("Str::json_deserialize encountered unknown escape char %c", **read);
+            }
+            escaping = false;
+        } else if (!escaping) {
             if (**read == '\\') {
                 escaping = true;
                 ++*read;
@@ -150,9 +209,8 @@ bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, Str* va
                 ++*read;
                 break;
             }
+            *arena->push<char>() = **read;
         }
-        escaping = false;
-        *arena->push<char>() = **read;
         ++*read;
     }
 
@@ -188,7 +246,7 @@ fail:
 
 #define ImplJsonNumber(ty_, reader_)                                                     \
     void json_serialize(Arena* out, ty_* val, u32 tab) {                                 \
-        arena_print(out, *val);                                                          \
+        print_value(out, *val);                                                          \
     }                                                                                    \
     bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ty_* val) { \
         cchar* start = *read;                                                            \
@@ -228,7 +286,7 @@ ImplJsonNumber(double, json_strtod);
         json_serialize(out, &elems, tab);                                                \
     }                                                                                    \
     bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ty_* val) { \
-        u8 buffer[2 * sizeof(ty_) * size_];                                              \
+        u8 buffer[sizeof(ty_) * size_];                                                  \
         Arena scratch = Arena::make_with_buffer(buffer, RawArrayLen(buffer));            \
         Slice<underlying_> slice;                                                        \
         json_deserialize(&scratch, ctx, end, read, &slice);                              \
@@ -246,12 +304,52 @@ ImplJsonVec(uvec2, u32, 2);
 ImplJsonVec(uvec3, u32, 3);
 ImplJsonVec(uvec4, u32, 4);
 
+void json_serialize(Arena* out, vec3a* val, u32 tab) {
+    vec3 as3 = val->to_vec3();
+    json_serialize(out, &as3, tab);
+}
+bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, vec3a* val) {
+    vec3 as3;
+    if (!json_deserialize(arena, ctx, end, read, &as3)) return false;
+    *val = as3.to_vec3a();
+    return true;
+}
+
 #undef ImplJsonVec
 
 // -----------------------------------------------------------------------------
 
+forall(T) void json_serialize(Arena* out, Vec<T>* val, u32 tab) {
+    Slice<T> slice = val->slice();
+    json_serialize(out, &slice, tab);
+}
+
+forall(T) bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, Vec<T>* val, usize p0_capacity) {
+    *val = Vec<T>::make(arena, p0_capacity);
+
+    if (!json_expect(end, read, "[")) goto fail;
+
+    for (;;) {
+        if (json_expect(end, read, "]")) break;
+
+        T* elem = val->push();
+        if (!json_deserialize(arena, ctx, end, read, elem)) goto fail;
+
+        json_chomp_whitespace(end, read);
+        if (json_expect_immediate(end, read, "]")) break;
+        if (!json_expect_immediate(end, read, ",")) goto fail;
+    }
+
+    return true;
+fail:
+    log("json: failed to parse Vec<>");
+    return false;
+}
+
+// -----------------------------------------------------------------------------
+
 forall(T) void json_serialize(Arena* out, Slice<T>* val, u32 tab) {
-    arena_print(out, "[\n");
+    print_value(out, "[\n");
 
     tab++;
     Assert(2 * tab < sizeof(JSON_SERIALIZE_INDENTATION));
@@ -259,18 +357,18 @@ forall(T) void json_serialize(Arena* out, Slice<T>* val, u32 tab) {
 
     int i = 0;
     foreach (it, val->iter()) {
-        arena_print(out, tabstr);
+        print_value(out, tabstr);
         json_serialize(out, it.item, tab);
         if (++i < val->count) {
-            arena_print(out, ",\n");
+            print_value(out, ",\n");
         } else {
-            arena_print(out, "\n");
+            print_value(out, "\n");
         }
     }
 
     tab--;
     tabstr = Str{JSON_SERIALIZE_INDENTATION, 2 * tab};
-    arena_print(out, tabstr, ']');
+    str_print(out, tabstr, ']');
 }
 
 forall(T) bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, Slice<T>* val) {
@@ -299,6 +397,52 @@ forall(T) bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** rea
     return true;
 fail:
     log("json: failed to parse Slice<>");
+    return false;
+}
+
+// -----------------------------------------------------------------------------
+
+forall(T) void json_serialize(Arena* out, List<T>* val, u32 tab) {
+    print_value(out, "[\n");
+
+    tab++;
+    Assert(2 * tab < sizeof(JSON_SERIALIZE_INDENTATION));
+    Str tabstr = Str{JSON_SERIALIZE_INDENTATION, 2 * tab};
+
+    int i = 0;
+    foreach (it, val->iter()) {
+        print_value(out, tabstr);
+        json_serialize(out, it.item, tab);
+        if (++i < val->count) {
+            print_value(out, ",\n");
+        } else {
+            print_value(out, "\n");
+        }
+    }
+
+    tab--;
+    tabstr = Str{JSON_SERIALIZE_INDENTATION, 2 * tab};
+    str_print(out, tabstr, ']');
+}
+
+forall(T) bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, List<T>* val) {
+    ZeroStruct(val);
+    if (!json_expect(end, read, "[")) goto fail;
+
+    for (;;) {
+        if (json_expect(end, read, "]")) break;
+
+        T* elem = val->push(arena);
+        if (!json_deserialize(arena, ctx, end, read, elem)) goto fail;
+
+        json_chomp_whitespace(end, read);
+        if (json_expect_immediate(end, read, "]")) break;
+        if (!json_expect_immediate(end, read, ",")) goto fail;
+    }
+
+    return true;
+fail:
+    log("json: failed to parse List<>");
     return false;
 }
 

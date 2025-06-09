@@ -8,7 +8,9 @@ namespace a {
 // -----------------------------------------------------------------------------
 
 forall(T) void bin_to_file(Str path, T* obj);
+forall(T) Slice<u8> bin_to_slice(Arena* out, T* obj);
 forall(T) void bin_from_file(Arena* base, void* ctx, Str path, T* obj);
+forall(T) void bin_from_slice(Arena* base, void* ctx, Slice<u8> bin, T* obj);
 
 #define DefBinDumpSerDe(ty_)                  \
     void bin_serialize(Arena* out, ty_* val); \
@@ -37,6 +39,7 @@ DefBinDumpSerDe(double);
 
 DefBinDumpSerDe(vec2);
 DefBinDumpSerDe(vec3);
+DefBinDumpSerDe(vec3a);
 DefBinDumpSerDe(vec4);
 DefBinDumpSerDe(ivec2);
 DefBinDumpSerDe(ivec3);
@@ -47,8 +50,12 @@ DefBinDumpSerDe(uvec4);
 
 #undef DefBinDumpSerDe
 
+forall(T) void bin_serialize(Arena* out, Vec<T>* val);
+forall(T) bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, Vec<T>* val, usize p0_capacity);
 forall(T) void bin_serialize(Arena* out, Slice<T>* val);
 forall(T) bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, Slice<T>* val);
+forall(T) void bin_serialize(Arena* out, List<T>* val);
+forall(T) bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, List<T>* val);
 
 // -----------------------------------------------------------------------------
 }  // namespace a

@@ -30,8 +30,8 @@ class Arena {
     void push_bytes(void* start, usize size);
 
   private:
-    global usize mem_reserve_size;
-    global usize mem_commit_size;
+    global u32 log_reserve_page_size;
+    global u32 log_commit_page_size;
 
     void bump(usize size);
 

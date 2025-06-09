@@ -41,6 +41,7 @@ DefJsonSerDe(double);
 
 DefJsonSerDe(vec2);
 DefJsonSerDe(vec3);
+DefJsonSerDe(vec3a);
 DefJsonSerDe(vec4);
 DefJsonSerDe(ivec2);
 DefJsonSerDe(ivec3);
@@ -53,6 +54,8 @@ DefJsonSerDe(uvec4);
 
 forall(T) void json_serialize(Arena* out, Slice<T>* val, u32 tab);
 forall(T) bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, Slice<T>* val);
+forall(T) void json_serialize(Arena* out, List<T>* val, u32 tab);
+forall(T) bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, List<T>* val);
 
 // -----------------------------------------------------------------------------
 }  // namespace a

@@ -46,12 +46,8 @@
 #define X_forall_4(t1, t2, t3, t4) template <typename t1, typename t2, typename t3, typename t4>
 #define forall(...) X_forall_dispatch(__VA_ARGS__, X_forall_4, X_forall_3, X_forall_2, X_forall_1)(__VA_ARGS__)
 
-#if defined(__has_attribute)
-#if __has_attribute(no_sanitize)
+#if defined(__has_attribute) && __has_attribute(no_sanitize)
 #define no_sanitize_overflow __attribute__((no_sanitize("unsigned-integer-overflow", "signed-integer-overflow")))
-#else
-#define no_sanitize_overflow
-#endif
 #else
 #define no_sanitize_overflow
 #endif
@@ -117,9 +113,10 @@ consteval u64 operator""_gb(u64 n) { return n << 30; }
 
 #define Unimplemented() Panic("unimplemented!")
 
+#define ZeroStruct(struct_ptr) ((decltype(struct_ptr))memset((struct_ptr), 0, sizeof(*(struct_ptr))))
+#define ZeroArray(array, count) memset((array), 0, (count) * sizeof((array)[0]))
+
 #define StructEq(a_ptr, b_ptr) (memcmp((a_ptr), (b_ptr), sizeof(*(a_ptr))) == 0)
-#define StructZero(struct_ptr) ((decltype(struct_ptr))memset((struct_ptr), 0, sizeof(*(struct_ptr))))
-#define ArrayZero(array, count) memset((array), 0, (count) * sizeof((array)[0]))
 #define ArrayCopy(dest_ptr, array, count) memcpy((dest_ptr), (array), (count) * sizeof((array)[0]))
 #define MemCopy memcpy
 
@@ -174,6 +171,7 @@ int count_leading_zeroes(u64 a) { return __builtin_clzll(a); }
 int count_leading_zeroes(u32 a) { return __builtin_clz(a); }
 
 forall(T, U) U bit_cast(T a) {
+    static_assert(sizeof(T) == sizeof(U));
     union {
         T in;
         U out;
@@ -182,6 +180,11 @@ forall(T, U) U bit_cast(T a) {
     return bits.out;
 }
 #define HackCast(ty, obj) (bit_cast<decltype(obj), ty>(obj))
+
+forall(T, U) struct Pair {
+    T left;
+    U right;
+};
 
 // -----------------------------------------------------------------------------
 }  // namespace a

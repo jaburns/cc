@@ -15,7 +15,6 @@ namespace a {
         int written = snprintf(out_buffer.elems, out_buffer.count, marker, value);             \
         out->cur = arena_start + written;                                                      \
     }
-ImplPrintValue(char, "%c");
 ImplPrintValue(i8, "%i");
 ImplPrintValue(u8, "%u");
 ImplPrintValue(i16, "%i");
@@ -48,6 +47,13 @@ ImplPrintValueStr(cchar*);
 void print_value(Arena* out, bool value) {
     print_value(out, value ? "true" : "false");
 }
+void print_value(Arena* out, char value) {
+    if (out) {
+        *out->push<char>() = value;
+    } else {
+        printf("%c", value);
+    }
+}
 
 void print() {}
 forall(T, ... Args) void print(T value, Args... args) {
@@ -66,17 +72,17 @@ forall(T, ... Args) void x_log_print(T value, Args... args) {
     x_log_print(args...);
 }
 
-void arena_print(Arena* out) {}
-forall(T, ... Args) Str arena_print(Arena* out, T value, Args... args) {
+void str_print(Arena* out) {}
+forall(T, ... Args) Str str_print(Arena* out, T value, Args... args) {
     u8* arena_start = out->cur;
     print_value(out, value);
-    arena_print(out, args...);
+    str_print(out, args...);
     return Str{(char*)arena_start, (usize)(out->cur - arena_start)};
 }
-forall(... Args) Str arena_println(Arena* out, Args... args) {
+forall(... Args) Str str_println(Arena* out, Args... args) {
     u8* arena_start = out->cur;
-    arena_print(out, args...);
-    arena_print(out, "\n");
+    str_print(out, args...);
+    str_print(out, "\n");
     return Str{(char*)arena_start, (usize)(out->cur - arena_start)};
 }
 
@@ -157,18 +163,16 @@ Str Str::after_last_index(char split) {
 
 Str Str::trim() {
     Str str = *this;
-    if (str.count == 0) return str;
-    str.count--;
     while (str.count > 0 && isspace(*str.elems)) {
         str.elems++;
         str.count--;
     }
-    cchar* str_end = str.elems + str.count;
+    if (str.count == 0) return str;
+    cchar* str_end = str.elems + str.count - 1;
     while (str.count > 0 && isspace(*str_end)) {
         str_end--;
         str.count--;
     }
-    str.count++;
     return str;
 }
 

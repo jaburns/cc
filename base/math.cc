@@ -431,7 +431,7 @@ mat4& mat4::mk_identity() {
 
 mat4& mat4::mk_ortho(float left, float right, float bottom, float top, float z_near, float z_far) {
     float rl, tb, fn;
-    StructZero(this);
+    ZeroStruct(this);
 
     rl = 1.f / (right - left);
     tb = 1.f / (top - bottom);
@@ -451,7 +451,7 @@ mat4& mat4::mk_ortho(float left, float right, float bottom, float top, float z_n
 mat4& mat4::mk_perspective(float fov_y, float aspect, float z_near, float z_far) {
     float tan_half_fov_y = tanf(fov_y / 2.f);
 
-    StructZero(this);
+    ZeroStruct(this);
     a.x = 1.f / (aspect * tan_half_fov_y);
     // if (vulkan , ie NDC -1 top, +1 bottom) {
     //    b.y = -1.f / tan_half_fov_y;
@@ -860,7 +860,10 @@ int range(int min_inclusive, int max_exclusive) {
 }
 
 float value() {
-    return (float)((double)rand() / (double)RAND_MAX);
+    // linear congruential prng, seeded by cpu ticks
+    u32 seed = (u32)timing_get_ticks() ^ 0x7AC0BE11;
+    seed = wrapped_add(wrapped_mul(seed, 1664525), 1013904223);
+    return (float)((double)seed / 4294967296.0);
 }
 
 }  // namespace random

@@ -46,7 +46,7 @@ forall(T) struct Slice {
     void copy_into(void* mem);
     forall(U) Slice<U> cast();
     usize size();
-    void clear_to_zero() { ArrayZero(elems, count); }
+    void clear_to_zero() { ZeroArray(elems, count); }
 
     T& operator[](usize index);
 
@@ -150,6 +150,8 @@ forall(T) class List {
     void remove(T* elem);
     Slice<T> copy_into_array(Arena* arena);
 
+    T* first() { return head ? &head->item : nullptr; }
+    T* last() { return tail ? &tail->item : nullptr; }
     Iter iter() { return Iter::make(this); };
 };
 

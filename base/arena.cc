@@ -5,14 +5,18 @@ namespace a {
 #define MEMORY_RESERVE_DEFAULT_SIZE 1_mb
 
 global thread_local Arena* g_arena_scratch[2];
-usize Arena::mem_reserve_size;
-usize Arena::mem_commit_size;
+u32 Arena::log_reserve_page_size;
+u32 Arena::log_commit_page_size;
 
 // -----------------------------------------------------------------------------
 
 void Arena::global_init() {
-    Arena::mem_reserve_size = (usize)sysconf(_SC_PAGESIZE);
-    Arena::mem_commit_size = (usize)sysconf(_SC_PAGESIZE);
+    u32 page_size = (u32)sysconf(_SC_PAGESIZE);
+    u32 log_page_size = (8 /*bits*/ * sizeof(u32) - count_leading_zeroes(page_size)) - 1;
+    AssertM(1 << log_page_size == page_size, "Arena::global_init failed: unexpected non-power-of-two page size");
+
+    Arena::log_reserve_page_size = log_page_size;
+    Arena::log_commit_page_size = log_page_size;
 }
 
 void Arena::thread_init(Arena* scratch0, Arena* scratch1) {
@@ -28,6 +32,7 @@ void Arena::create(usize reserve_size) {
     if (reserve_size == 0) {
         reserve_size = MEMORY_RESERVE_DEFAULT_SIZE;
     } else {
+        usize mem_reserve_size = 1 << log_reserve_page_size;
         usize pages = (reserve_size % mem_reserve_size == 0 ? 0 : 1) + reserve_size / mem_reserve_size;
         reserve_size = mem_reserve_size * pages;
     }
@@ -50,10 +55,10 @@ Arena Arena::make_with_buffer(u8* bytes, usize count) {
 }
 
 void Arena::destroy() {
-    DebugAssert(cur);
-    clear();
-    mem_release(base, reserved_size);
-    StructZero(this);
+    if (cur && pages_committed != USIZE_MAX) {
+        mem_release(base, reserved_size);
+    }
+    ZeroStruct(this);
 }
 
 void Arena::max_align() {
@@ -122,17 +127,16 @@ void Arena::bump(usize size) {
     }
 
     usize total_commit_size = (usize)(cur - base);
-    usize total_pages_required = 1 + total_commit_size / mem_commit_size;  // TODO(jaburns) this could be a bit shift if we store log(commit size)
-    // TODO(jaburns) also, this gives an extra page if total_commit_size == mem_commit_size
+    usize total_pages_required = 1 + ((total_commit_size - 1) >> log_commit_page_size);
 
     if (total_pages_required > pages_committed) {
-        AssertM(total_pages_required * mem_commit_size <= reserved_size, "memory_reservation_commit would overrun the end of the reserved address space");
+        AssertM(total_pages_required << log_commit_page_size <= reserved_size, "memory_reservation_commit would overrun the end of the reserved address space");
 
-        usize cur_size = mem_commit_size * pages_committed;
+        usize cur_size = pages_committed << log_commit_page_size;
         usize add_pages = total_pages_required - pages_committed;
         pages_committed = total_pages_required;
 
-        mem_commit(base + cur_size, add_pages * mem_commit_size);
+        mem_commit(base + cur_size, add_pages << log_commit_page_size);
     }
 }
 

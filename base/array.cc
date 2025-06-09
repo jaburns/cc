@@ -79,7 +79,7 @@ forall(T) Slice<T> This::slice() {
 
 forall(T) T* This::push() {
     AssertM(count < capacity, "attempted to push onto a full vec");
-    return &elems[count++];
+    return ZeroStruct(&elems[count++]);
 }
 
 forall(T) T* This::pop() {
@@ -186,7 +186,7 @@ forall(T) void This::remove(T* elem) {
         tail = e->prev;
     }
 
-    StructZero(e);
+    ZeroStruct(e);
     e->next = free_list;
     free_list = e;
 

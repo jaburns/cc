@@ -87,7 +87,7 @@ found:
     keys[i] = *key;
 
     V* value = &values[i];
-    return StructZero(value);
+    return ZeroStruct(value);
 }
 
 Template V* This::maybe_get(K* key) {
@@ -139,7 +139,7 @@ not_found:
     keys[i] = *key;
 
     V* value = &values[i];
-    return StructZero(value);
+    return ZeroStruct(value);
 }
 
 Template bool This::remove(K* key) {
@@ -153,7 +153,7 @@ Template bool This::remove(K* key) {
 
 Template void This::clear() {
     count = 0;
-    ArrayZero(hashes, capacity);
+    ZeroArray(hashes, capacity);
 }
 
 Template This::Iter This::Iter::make(This* map) {

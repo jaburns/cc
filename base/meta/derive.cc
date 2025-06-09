@@ -43,7 +43,7 @@ bool has_tag(List<Str> tags, Str tag) {
 
 // -----------------------------------------------------------------------------
 
-void handler_derive_struct_info(DeriveStructInfo* info) {
+void handler_derive_struct_info(Str target_hh_path, Str target_cc_path, DeriveStructInfo* info) {
     ScratchArena scratch{};
     auto sb = StrBuilder::make(scratch.arena);
 
@@ -66,12 +66,12 @@ void handler_derive_struct_info(DeriveStructInfo* info) {
     );
 
     sb.println("");
-    fs_append_file_bytes(info->target_hh_path, sb.to_str().to_slice().cast<u8>());
+    fs_append_file_bytes(target_hh_path, sb.to_str().to_slice().cast<u8>());
 }
 
 // -----------------------------------------------------------------------------
 
-void handler_derive_json(DeriveStructInfo* info) {
+void handler_derive_json(Str target_hh_path, Str target_cc_path, DeriveStructInfo* info) {
     ScratchArena scratch{};
     auto sb = StrBuilder::make(scratch.arena);
 
@@ -80,7 +80,7 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ", info->name, "* val);");
 
     sb.println("");
-    fs_append_file_bytes(info->target_hh_path, sb.to_str().to_slice().cast<u8>());
+    fs_append_file_bytes(target_hh_path, sb.to_str().to_slice().cast<u8>());
     scratch.arena->cur = sb.arena_start;
 
     Str arena_name = {};
@@ -95,23 +95,23 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("    tab++;");
     sb.println("    Assert(2 * tab < sizeof(JSON_SERIALIZE_INDENTATION));");
     sb.println("    Str tabstr = Str{JSON_SERIALIZE_INDENTATION, 2 * tab};");
-    sb.println("    arena_print(out, \"{\\n\");");
+    sb.println("    str_print(out, \"{\\n\");");
     sb.println("    ");
     foreach_idx(i, it, info->fields.iter()) {
-        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "serde_skip")) continue;
+        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "#skip")) continue;
 
-        sb.println("    arena_print(out, tabstr, \"\\\"", it.item->name, "\\\": \");");
+        sb.println("    str_print(out, tabstr, \"\\\"", it.item->name, "\\\": \");");
         sb.println("    json_serialize(out, &val->", it.item->name, ", tab);");
         if (i < info->fields.count) {
-            sb.println("    arena_print(out, \",\\n\");");
+            sb.println("    str_print(out, \",\\n\");");
         } else {
-            sb.println("    arena_print(out, \"\\n\");");
+            sb.println("    str_print(out, \"\\n\");");
         }
         sb.println("    ");
     }
     sb.println("    tab--;");
     sb.println("    tabstr = Str{JSON_SERIALIZE_INDENTATION, 2 * tab};");
-    sb.println("    arena_print(out, tabstr, \"}\");");
+    sb.println("    str_print(out, tabstr, \"}\");");
     sb.println("}");
     sb.println("");
 
@@ -119,11 +119,15 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("    if (!json_expect(end, read, \"\\\"\")) return false;");
     sb.println("    if (false) {");
     foreach (it, info->fields.iter()) {
-        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "serde_skip")) continue;
+        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "#skip")) continue;
 
         sb.println("    } else if (json_expect(end, read, \"", it.item->name, "\\\"\")) {");
         sb.println("        if (!json_expect(end, read, \":\")) return false;");
-        sb.println("        if (!json_deserialize(arena, ctx, end, read, &val->", it.item->name, ")) return false;");
+        sb.print("        if (!json_deserialize(arena, ctx, end, read, &val->", it.item->name);
+        foreach (param, it.item->params.iter()) {
+            sb.print(", ", *param.item);
+        }
+        sb.println(")) return false;");
     }
     sb.println("    } else {");
     sb.println("        if (!json_skip_opened_string(end, read)) return false;");
@@ -146,7 +150,7 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("}");
 
     sb.println("bool json_deserialize(Arena* arena, void* ctx, cchar* end, cchar** read, ", info->name, "* val) {");
-    sb.println("    StructZero(val);");
+    sb.println("    ZeroStruct(val);");
     if (arena_name.count) {
         sb.println("    val->", arena_name, ".create();");
         sb.println("    arena = &val->", arena_name, ";");
@@ -163,12 +167,12 @@ void handler_derive_json(DeriveStructInfo* info) {
     sb.println("}");
 
     sb.println("");
-    fs_append_file_bytes(info->target_cc_path, sb.to_str().to_slice().cast<u8>());
+    fs_append_file_bytes(target_cc_path, sb.to_str().to_slice().cast<u8>());
 }
 
 // -----------------------------------------------------------------------------
 
-void handler_derive_bindump(DeriveStructInfo* info) {
+void handler_derive_bindump(Str target_hh_path, Str target_cc_path, DeriveStructInfo* info) {
     ScratchArena scratch{};
     auto sb = StrBuilder::make(scratch.arena);
 
@@ -176,7 +180,7 @@ void handler_derive_bindump(DeriveStructInfo* info) {
     sb.println("bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, ", info->name, "* val);");
 
     sb.println("");
-    fs_append_file_bytes(info->target_hh_path, sb.to_str().to_slice().cast<u8>());
+    fs_append_file_bytes(target_hh_path, sb.to_str().to_slice().cast<u8>());
     scratch.arena->cur = sb.arena_start;
 
     Str arena_name = {};
@@ -189,21 +193,25 @@ void handler_derive_bindump(DeriveStructInfo* info) {
 
     sb.println("void bin_serialize(Arena* out, ", info->name, "* val) {");
     foreach (it, info->fields.iter()) {
-        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "serde_skip")) continue;
+        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "#skip")) continue;
         sb.println("    bin_serialize(out, &val->", it.item->name, ");");
     }
     sb.println("}");
     sb.println("");
 
     sb.println("bool bin_deserialize(Arena* arena, void* ctx, u8* end, u8** read, ", info->name, "* val) {");
-    sb.println("    StructZero(val);");
+    sb.println("    ZeroStruct(val);");
     if (arena_name.count) {
         sb.println("    val->", arena_name, ".create();");
         sb.println("    arena = &val->", arena_name, ";");
     }
     foreach (it, info->fields.iter()) {
-        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "serde_skip")) continue;
-        sb.println("    if (!bin_deserialize(arena, ctx, end, read, &val->", it.item->name, ")) return false;");
+        if (it.item->type.eq("Arena") || has_tag(it.item->tags, "#skip")) continue;
+        sb.print("    if (!bin_deserialize(arena, ctx, end, read, &val->", it.item->name);
+        foreach (param, it.item->params.iter()) {
+            sb.print(", ", *param.item);
+        }
+        sb.println(")) return false;");
     }
     if (info->has_post_deserialize_method) {
         sb.println("    val->post_deserialize(ctx);");
@@ -212,7 +220,7 @@ void handler_derive_bindump(DeriveStructInfo* info) {
     sb.println("}");
 
     sb.println("");
-    fs_append_file_bytes(info->target_cc_path, sb.to_str().to_slice().cast<u8>());
+    fs_append_file_bytes(target_cc_path, sb.to_str().to_slice().cast<u8>());
 }
 
 // -----------------------------------------------------------------------------
@@ -224,8 +232,16 @@ void parse_file(Str dir_path, Str file_path, Slice<DeriveCustomHandler> custom_h
     u32 line_no = 0;
 
     Vec<DeriveHandler> handlers = Vec<DeriveHandler>::make(scratch.arena, 64);
-    u8* scratch_mark = scratch.arena->cur;
     DeriveStructInfo info = {};
+
+    Str target_base_path = str_print(scratch.arena, "bin/", file_path.replace(scratch.arena, "/", "_").replace(scratch.arena, ".", "_"));
+    Str target_hh_path = str_print(scratch.arena, target_base_path, ".derive.hh");
+    Str target_cc_path = str_print(scratch.arena, target_base_path, ".derive.cc");
+
+    fs_remove_file_if_exists(target_hh_path);
+    fs_remove_file_if_exists(target_cc_path);
+
+    u8* scratch_mark = scratch.arena->cur;
 
     foreach (it, file.split_char_iter('\n')) {
         Str line = it.item.trim();
@@ -237,29 +253,18 @@ void parse_file(Str dir_path, Str file_path, Slice<DeriveCustomHandler> custom_h
                 it.next();
                 info.name = it.item;
 
-            } else if (line.starts_with("#include")) {
-                Str path;
-                Assert(read_include_path(scratch.arena, line, &path));
-
-                info.target_hh_path = arena_print(scratch.arena, dir_path, "/", path);
-                info.target_cc_path = info.target_hh_path.replace(scratch.arena, ".hh", ".cc");
-
-                fs_remove_file_if_exists(info.target_hh_path);
-                fs_remove_file_if_exists(info.target_cc_path);
-
+            } else if (line.eq("};")) {
                 foreach (handler, handlers.iter()) {
-                    (*handler.item)(&info);
+                    (*handler.item)(target_hh_path, target_cc_path, &info);
                 }
                 handlers.count = 0;
-                StructZero(&info);
+                ZeroStruct(&info);
 
             } else if (!line.starts_with("}") && !line.starts_with("/")) {
                 Str type, name;
                 Str pre_comment = line.before_first_index('/').trim();
 
                 if (read_field(scratch.arena, pre_comment, &type, &name)) {
-                    bool skip = false;
-
                     DeriveStructField* f = info.fields.push(scratch.arena);
                     f->type = type;
                     f->name = name;
@@ -267,9 +272,12 @@ void parse_file(Str dir_path, Str file_path, Slice<DeriveCustomHandler> custom_h
                     Str post_comment = line.after_first_index('/').trim();
                     if (post_comment.count > 0) {
                         auto tags_it = post_comment.split_whitespace_iter();
-                        if (tags_it.item.eq("/!")) {
-                            tags_it.next();
-                            foreach (tag, tags_it) {
+                        foreach (tag, tags_it) {
+                            if (!tag.item.starts_with("#")) continue;
+
+                            if (tag.item.starts_with("#=")) {
+                                *f->params.push(scratch.arena) = tag.item.substr_from(2);
+                            } else {
                                 *f->tags.push(scratch.arena) = tag.item;
                             }
                         }
@@ -282,13 +290,12 @@ void parse_file(Str dir_path, Str file_path, Slice<DeriveCustomHandler> custom_h
                 }
             }
         } else {
-            if (line.starts_with("//! derive")) {
+            if (line.starts_with("//$")) {
                 scratch.arena->cur = scratch_mark;
                 line_no = 0;
 
                 auto lines_it = line.split_whitespace_iter();
-                lines_it.next();  // //!
-                lines_it.next();  // derive
+                lines_it.next();  // skip "//$"
                 foreach (it, lines_it) {
                     if (it.item.eq("json")) {
                         *handlers.push() = handler_derive_json;
@@ -335,7 +342,7 @@ void walk_dir(Vec<Str>* path_parts, Slice<DeriveCustomHandler> custom_handlers) 
 void derive_run(Str root_dir, Slice<DeriveCustomHandler> custom_handlers) {
     ScratchArena scratch{};
     Vec<Str> path_parts = Vec<Str>::make(scratch.arena, 64);
-    *path_parts.push() = "src";
+    *path_parts.push() = root_dir;
     derive_::walk_dir(&path_parts, custom_handlers);
 }
 

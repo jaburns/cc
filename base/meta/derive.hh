@@ -7,17 +7,16 @@ struct DeriveStructField {
     Str type;
     Str name;
     List<Str> tags;
+    List<Str> params;
 };
 
 struct DeriveStructInfo {
     Str name;
     List<DeriveStructField> fields;
-    Str target_hh_path;
-    Str target_cc_path;
     bool has_post_deserialize_method;
 };
 
-typedef void (*DeriveHandler)(DeriveStructInfo* info);
+typedef void (*DeriveHandler)(Str target_hh_path, Str target_cc_path, DeriveStructInfo* info);
 
 struct DeriveCustomHandler {
     Str match_name;
